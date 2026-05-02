@@ -153,6 +153,10 @@ def _spawn_scene(key: str) -> None:
         global _current_scene
         try:
             fn(_tripars, _focus, _groot, stop)
+        except Exception as e:
+            import traceback
+            print(f"[scene-{key}] CRASHED: {e!r}")
+            traceback.print_exc()
         finally:
             if _current_scene == key:
                 _current_scene = None

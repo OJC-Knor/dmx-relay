@@ -320,48 +320,51 @@ def scene_10_fade(tripars, focus, groot, stop: threading.Event) -> None:
 
 
 def scene_11_beam_sweep(tripars, focus, groot, stop: threading.Event) -> None:
-    """Heads sweep: position horizontal, turn on, tilt down, turn off, return."""
+    """Beam sweep — each head runs the cycle horizontal -> on -> tilt down ->
+    off -> return on its own staggered phase, so it looks like a wave."""
     _ensure_visible(tripars, focus, groot)
     for t in tripars:
         t.color(40, 20, 60)  # soft purple backdrop
     for h in focus:
         h._set("pan_tilt_speed", 0)
-        h.color("white"); h.gobo("open")
+        h.color("white")
+        h.gobo("open")
     for h in groot:
         h._set("speed", 0)
         h.color("white")
 
+    heads = focus + groot
     HORIZONTAL = 32
     DOWN = 200
+    CYCLE = 4.0  # seconds — full per-head cycle
 
+    start = time.time()
     while not stop.is_set():
-        # 1. move silently to horizontal
-        for h in focus + groot:
-            h.shutter("closed")
-            h.position(128, HORIZONTAL)
-        if stop.wait(0.9):
-            return
-        # 2. turn on at horizontal
-        for h in focus + groot:
-            h.shutter("open")
+        t_now = time.time() - start
+        for i, h in enumerate(heads):
+            offset = (i * CYCLE) / len(heads)
+            phase = ((t_now - offset) % CYCLE) / CYCLE
+
+            if phase < 0.40:
+                # silently moving back to horizontal (shutter closed)
+                tilt, lit = HORIZONTAL, False
+            elif phase < 0.55:
+                # on at horizontal
+                tilt, lit = HORIZONTAL, True
+            elif phase < 0.85:
+                # sweeping from horizontal to down (lit)
+                f = (phase - 0.55) / 0.30
+                tilt = int(HORIZONTAL + (DOWN - HORIZONTAL) * f)
+                lit = True
+            else:
+                # off at down
+                tilt, lit = DOWN, False
+
+            h.position(128, tilt)
+            h.shutter("open" if lit else "closed")
             h.dim(255)
-        if stop.wait(0.4):
-            return
-        # 3. animated sweep down
-        steps = 20
-        for i in range(1, steps + 1):
-            if stop.is_set():
-                return
-            f = i / steps
-            tilt = int(HORIZONTAL + (DOWN - HORIZONTAL) * f)
-            for h in focus + groot:
-                h.position(128, tilt)
-            time.sleep(1.1 / steps)
-        # 4. turn off at down
-        for h in focus + groot:
-            h.shutter("closed")
-        if stop.wait(0.35):
-            return
+
+        time.sleep(1 / 40)
 
 
 def scene_12_police(tripars, focus, groot, stop: threading.Event) -> None:

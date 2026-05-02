@@ -35,7 +35,7 @@ GOBOS: dict[str, int] = {
 
 # Channels 9 and 11 (regular + UV) shutter/strobe states.
 SHUTTERS: dict[str, int] = {
-    "off":     0,    # 0-7
+    "closed":  0,    # 0-7
     "open":   12,    # 8-15
     "strobe": 75,    # 16-131
     "slow_open_fast_close": 160,  # 140-181
@@ -84,7 +84,7 @@ class FocusSpotTwo(Fixture):
             prism=0,
             shutter=SHUTTERS["open"],
             dimmer=255,
-            uv_shutter=SHUTTERS["off"],
+            uv_shutter=SHUTTERS["closed"],
             uv_dimmer=0,
             focus=128,
             show=0, show_speed=0,
@@ -125,4 +125,4 @@ class FocusSpotTwo(Fixture):
         self._set("focus", value)
 
     def blackout(self) -> None:
-        self._set_many(shutter=SHUTTERS["off"], uv_shutter=SHUTTERS["off"])
+        self._set_many(shutter=SHUTTERS["closed"], uv_shutter=SHUTTERS["closed"])
