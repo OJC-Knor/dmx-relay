@@ -23,6 +23,7 @@ from scenes import SCENES, SCENE_BY_KEY
 ROOT = Path(__file__).parent
 INDEX_PATH = ROOT / "templates" / "index.html"
 EDITOR_PATH = ROOT / "templates" / "editor.html"
+VIZ_PATH = ROOT / "templates" / "viz.html"
 LAYOUT_PATH = ROOT / "state" / "layout.json"
 
 # global state, initialized in lifespan
@@ -279,6 +280,25 @@ def get_rig():
     return {"fixtures": fixture_ids()}
 
 
+@app.get("/api/state")
+def get_state():
+    """Live fixture state for the visualizer (polled by /viz)."""
+    if _rig is None:
+        return {"running_scene": None, "tripars": [], "focus": [], "groot": [],
+                "atomic": {}, "fog": 0}
+    return {
+        "running_scene": _current_scene,
+        "tripars": [{"id": f"tripar-{i + 1}", **t.state}
+                    for i, t in enumerate(_rig.tripars)],
+        "focus":   [{"id": f"focus-{i + 1}",  **h.state}
+                    for i, h in enumerate(_rig.focus)],
+        "groot":   [{"id": f"groot-{i + 1}",  **h.state}
+                    for i, h in enumerate(_rig.groot)],
+        "atomic":  _rig.atomic.state,
+        "fog":     _rig.fog.state["level"],
+    }
+
+
 @app.get("/api/layout")
 def get_layout():
     return _load_layout()
@@ -301,6 +321,11 @@ def index():
 @app.get("/editor", response_class=HTMLResponse)
 def editor():
     return EDITOR_PATH.read_text()
+
+
+@app.get("/viz", response_class=HTMLResponse)
+def viz():
+    return VIZ_PATH.read_text()
 
 
 if __name__ == "__main__":

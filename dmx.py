@@ -154,6 +154,11 @@ class Fixture:
             lines.append(f"  DMX {dmx_ch:3d}  ch{i + 1} ({role:<7s}) = {self._values[i]}")
         return "\n".join(lines)
 
+    @property
+    def state(self) -> dict[str, int]:
+        """Current channel values keyed by channel name. Used by /api/state."""
+        return {name: self._values[i] for i, name in enumerate(self.CHANNELS)}
+
     def _set(self, channel_name: str, value: int) -> None:
         idx = self.CHANNELS.index(channel_name)
         self._values[idx] = max(0, min(255, int(value)))
