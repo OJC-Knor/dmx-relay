@@ -17,6 +17,8 @@ import threading
 import time
 from typing import Callable
 
+from layout import head_order_lr, tripar_groups
+
 Scene = Callable[..., None]
 
 # ----- helpers -----
@@ -563,9 +565,204 @@ def scene_evenodd(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
+# ----- geometry-aware scenes (use saved layout) -----
+
+def scene_ring_spin(tripars, focus, groot, stop: threading.Event) -> None:
+    """A bright dot rotates clockwise around the ring of 8 tripars
+    around the crowd. Stage row holds a soft warm backdrop."""
+    _ensure_visible(tripars, focus, groot)
+    ring, stage = tripar_groups()
+    bg = (8, 4, 25)
+    fg = (0, 220, 255)
+    backdrop = (60, 20, 80)
+
+    for i in stage:
+        tripars[i].color(*backdrop)
+    for h in focus + groot:
+        h.color("blue")
+        h.dim(160)
+
+    pos = 0.0  # fractional position in the ring, 0..len(ring)
+    speed = 1 / 0.18  # one tripar every 180 ms
+    last = time.time()
+    while not stop.is_set():
+        now = time.time()
+        pos = (pos + speed * (now - last)) % len(ring)
+        last = now
+        head = int(pos)
+        # leading tripar bright, trailing one fades, others bg
+        for k, idx in enumerate(ring):
+            if k == head:
+                tripars[idx].color(*fg)
+            elif k == (head - 1) % len(ring):
+                # trailing fade
+                tripars[idx].color(fg[0] // 3, fg[1] // 3, fg[2] // 3)
+            else:
+                tripars[idx].color(*bg)
+        time.sleep(1 / 60)
+
+
+def scene_radial_wave(tripars, focus, groot, stop: threading.Event) -> None:
+    """Color wave around the ring — each ring tripar phase-offset.
+    Stage tripars sync to the dominant hue."""
+    _ensure_visible(tripars, focus, groot)
+    ring, stage = tripar_groups()
+    for h in focus + groot:
+        h.color("white")
+        h.dim(180)
+
+    while not stop.is_set():
+        t_now = time.time()
+        base = t_now * 0.18
+        for k, idx in enumerate(ring):
+            tripars[idx].color(*hsv(base + k / len(ring)))
+        # stage row holds the leading hue, slightly desaturated
+        stage_color = hsv(base, s=0.7, v=0.7)
+        for idx in stage:
+            tripars[idx].color(*stage_color)
+        # heads do gentle synchronized circles
+        pan = int(128 + 50 * math.cos(t_now * 0.5))
+        tilt = int(128 + 40 * math.sin(t_now * 0.5))
+        for h in focus + groot:
+            h.position(pan, tilt)
+        time.sleep(1 / 30)
+
+
+def scene_stage_chase(tripars, focus, groot, stop: threading.Event) -> None:
+    """Energetic chase along the stage row (T9-12 + 3 Groots).
+    Ring stays in a calm color. Groot heads pan side to side."""
+    _ensure_visible(tripars, focus, groot)
+    ring, stage = tripar_groups()
+    g_order = head_order_lr("groot", len(groot))
+
+    for idx in ring:
+        tripars[idx].color(20, 0, 60)
+    for h in focus:
+        h.color("blue")
+        h.dim(120)
+    for h in groot:
+        h.color("white")
+        h.dim(255)
+
+    palette = [(255, 0, 80), (0, 200, 255), (255, 200, 0)]
+    pal_idx = 0
+    pos = 0
+    last_step = time.time()
+    direction = 1
+    line = list(stage) + [None] * len(groot)  # tripar idx or None for Groot slot
+
+    while not stop.is_set():
+        if time.time() - last_step > 0.10:
+            on_color = palette[pal_idx]
+            off_color = (12, 0, 20)
+            for k, slot in enumerate(line):
+                lit = (k == pos)
+                if slot is not None:
+                    tripars[slot].color(*(on_color if lit else off_color))
+            # Groot slots take the colored beam
+            for j, gi in enumerate(g_order):
+                slot_pos = len(stage) + j
+                if slot_pos == pos:
+                    groot[gi].dim(255)
+                else:
+                    groot[gi].dim(40)
+            pos += direction
+            if pos >= len(line):
+                pos = len(line) - 2
+                direction = -1
+                pal_idx = (pal_idx + 1) % len(palette)
+            elif pos < 0:
+                pos = 1
+                direction = 1
+                pal_idx = (pal_idx + 1) % len(palette)
+            last_step = time.time()
+        # heads sweep side-to-side
+        t_now = time.time()
+        pan = int(128 + 80 * math.sin(t_now * 1.0))
+        tilt = 100
+        for h in groot:
+            h.position(pan, tilt)
+        time.sleep(1 / 60)
+
+
+def scene_crowd_glow(tripars, focus, groot, stop: threading.Event) -> None:
+    """Atmospheric: Focus Spots aimed up over the crowd in white,
+    ring tripars in a slow warm wash, stage off. No strobing."""
+    _ensure_visible(tripars, focus, groot)
+    ring, stage = tripar_groups()
+
+    for h in focus:
+        h.color("white")
+        h.dim(180)
+        h.gobo("open")
+        h.position(128, 80)
+    for h in groot:
+        h.color("white")
+        h.dim(120)
+        h.position(128, 80)
+    for idx in stage:
+        tripars[idx].color(0, 0, 0)
+
+    while not stop.is_set():
+        t_now = time.time()
+        # warm wash on the ring, slow pulse
+        v = 0.6 + 0.3 * (math.sin(t_now * 0.3) + 1) / 2  # 0.6..0.9
+        col = hsv(0.06, s=0.8, v=v)  # warm orange-ish
+        for k, idx in enumerate(ring):
+            shimmer = 1.0 + 0.05 * math.sin(t_now * 0.4 + k)
+            tripars[idx].color(
+                min(255, int(col[0] * shimmer)),
+                min(255, int(col[1] * shimmer)),
+                min(255, int(col[2] * shimmer)),
+            )
+        # heads breathe in dimmer
+        d = 140 + int(40 * math.sin(t_now * 0.4))
+        for h in focus:
+            h.dim(d)
+        time.sleep(1 / 30)
+
+
+def scene_ring_quadrants(tripars, focus, groot, stop: threading.Event) -> None:
+    """Split the 8-ring into 4 pairs (quadrants); each holds a different
+    color, all four colors rotate around the ring every beat."""
+    _ensure_visible(tripars, focus, groot)
+    ring, stage = tripar_groups()
+    for h in focus + groot:
+        h.color("white")
+        h.dim(180)
+
+    palette = [
+        (255, 30, 80),   # pink-red
+        (0, 200, 255),   # cyan
+        (255, 200, 0),   # amber
+        (160, 0, 255),   # purple
+    ]
+    rotation = 0
+    last_rot = time.time()
+
+    while not stop.is_set():
+        if time.time() - last_rot > 0.85:
+            rotation = (rotation + 1) % len(ring)
+            last_rot = time.time()
+        for k, idx in enumerate(ring):
+            quad = ((k + rotation) // 2) % len(palette)
+            tripars[idx].color(*palette[quad])
+        # stage row holds the dominant color (first quadrant)
+        for idx in stage:
+            tripars[idx].color(*palette[rotation % len(palette)])
+        time.sleep(1 / 30)
+
+
 # ----- registry: consumed by app.py -----
 
 SCENES: list[tuple[str, str, Scene]] = [
+    # geometry-aware (use the saved layout)
+    ("ring_spin",       "Ring spin",       scene_ring_spin),
+    ("radial_wave",     "Radial wave",     scene_radial_wave),
+    ("stage_chase",     "Stage chase",     scene_stage_chase),
+    ("ring_quadrants",  "Quadrants",       scene_ring_quadrants),
+    ("crowd_glow",      "Crowd glow",      scene_crowd_glow),
+    # generic looks
     ("atmosphere", "Atmosphere", scene_atmosphere),
     ("sunrise",    "Sunrise",    scene_sunrise),
     ("chase",      "Chase",      scene_chase),
