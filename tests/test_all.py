@@ -17,7 +17,7 @@ from tests.test_fog import run as run_fog
 from tests.test_ms_zoom import run as run_ms_zoom
 from tests.test_tripar import run as run_tripar
 
-PORT = "/dev/cu.usbserial-BG03CYC2"
+from rig import PORT
 GAP = 1.5  # seconds of blackout between tests
 
 

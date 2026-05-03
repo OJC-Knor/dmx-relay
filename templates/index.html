@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>soos-lights</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0a0a0c;
+    --card: #16161a;
+    --card-2: #1f1f25;
+    --line: #2a2a30;
+    --text: #f4f4f6;
+    --muted: #8a8a94;
+    --accent: #6c8eff;
+    --warn: #ff9a3c;
+    --danger: #ff4d6a;
+    --ok: #51cf66;
+    --shadow: 0 8px 32px rgba(0,0,0,.4);
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); }
+  body {
+    font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+    margin: 0; padding: 20px 16px 120px; color: var(--text);
+    max-width: 760px; margin: 0 auto;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  h1 { margin: 0; font-weight: 700; font-size: 28px; letter-spacing: -.02em; }
+  .status {
+    font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px;
+  }
+  .status .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--ok);
+    box-shadow: 0 0 8px var(--ok);
+  }
+  .status.running .dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  section {
+    background: var(--card); padding: 18px 20px; border-radius: 16px;
+    margin-bottom: 14px; border: 1px solid var(--line);
+  }
+  section.special-atomic {
+    background: linear-gradient(135deg, #2a1410, #1a0d0c);
+    border-color: #4a2418;
+  }
+  section.special-fog {
+    background: linear-gradient(135deg, #14202a, #0d1118);
+    border-color: #1f3548;
+  }
+
+  h2 {
+    margin: 0 0 14px; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted);
+  }
+
+  .row { display: flex; align-items: center; gap: 14px; margin: 12px 0; }
+  label { min-width: 64px; font-size: 14px; color: var(--muted); }
+  .value { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums;
+           font-size: 13px; color: var(--muted); }
+
+  input[type=color] {
+    width: 56px; height: 44px; border: 1px solid var(--line);
+    background: transparent; cursor: pointer; border-radius: 10px; padding: 4px;
+  }
+
+  input[type=range] {
+    flex: 1; -webkit-appearance: none; appearance: none;
+    background: transparent; height: 32px; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 6px; background: var(--card-2); border-radius: 3px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--text); margin-top: -8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,.5);
+  }
+  input[type=range]::-moz-range-track { height: 6px; background: var(--card-2); border-radius: 3px; }
+  input[type=range]::-moz-range-thumb {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--text); border: none;
+  }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
+  }
+  .grid.tight { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+
+  button {
+    background: var(--card-2); color: var(--text);
+    border: 1px solid var(--line); padding: 14px 12px;
+    border-radius: 12px; font-size: 14px; font-weight: 500;
+    cursor: pointer; transition: all .15s ease;
+    min-height: 50px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:hover { background: #2a2a32; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.running { background: var(--accent); color: #000; border-color: var(--accent); }
+
+  button.atomic {
+    background: linear-gradient(180deg, #3a1f18, #2a1612);
+    border-color: #5a2c20;
+  }
+  button.atomic:hover { background: linear-gradient(180deg, #4a2820, #3a1c18); }
+  button.atomic-fire {
+    background: linear-gradient(180deg, var(--warn), #d97a2c);
+    border-color: var(--warn); color: #1a0d04; font-weight: 700;
+  }
+
+  button.fog-puff {
+    background: linear-gradient(180deg, #2c4860, #1a2c40);
+    border-color: #3a6080; color: #cfe4f5; font-weight: 700;
+    grid-column: span 2;
+  }
+
+  .blackout-bar {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding: 14px 16px env(safe-area-inset-bottom, 14px);
+    background: linear-gradient(0deg, var(--bg), rgba(10,10,12,0));
+    pointer-events: none;
+  }
+  .blackout-bar > div { max-width: 760px; margin: 0 auto; pointer-events: auto; }
+  button.blackout {
+    width: 100%;
+    background: linear-gradient(180deg, var(--danger), #c93750);
+    border-color: var(--danger); color: white; font-weight: 700;
+    font-size: 16px; min-height: 56px;
+    box-shadow: 0 8px 24px rgba(255,77,106,.25);
+  }
+  button.blackout:hover { background: linear-gradient(180deg, #ff5c75, #d23e58); }
+
+  .toast {
+    position: fixed; left: 50%; top: 24px; transform: translateX(-50%);
+    background: var(--card-2); border: 1px solid var(--line);
+    padding: 10px 16px; border-radius: 10px; font-size: 13px;
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+    z-index: 100; box-shadow: var(--shadow);
+  }
+  .toast.show { opacity: 1; }
+  .toast.error { background: #2a1418; border-color: var(--danger); color: #ffb8c4; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>soos-lights</h1>
+    <div class="status" id="status"><span class="dot"></span><span id="statusText">Ready</span></div>
+  </header>
+
+  <section>
+    <h2>All Tripars</h2>
+    <div class="row">
+      <label for="color">Color</label>
+      <input type="color" id="color" value="#ffffff">
+      <span class="value" id="colorval">#ffffff</span>
+    </div>
+    <div class="row">
+      <label for="white">White</label>
+      <input type="range" id="white" min="0" max="255" value="0">
+      <span class="value" id="whiteval">0</span>
+    </div>
+    <div class="row">
+      <label for="dim">Dimmer</label>
+      <input type="range" id="dim" min="0" max="255" value="255">
+      <span class="value" id="dimval">255</span>
+    </div>
+  </section>
+
+  <section class="special-atomic">
+    <h2>Atomic</h2>
+    <div class="grid tight">
+      <button class="atomic-fire" onclick="post('/atomic/flash')">FLASH</button>
+      <button class="atomic" onclick="post('/atomic/strobe_slow')">Slow strobe</button>
+      <button class="atomic" onclick="post('/atomic/strobe_fast')">Fast strobe</button>
+      <button class="atomic" onclick="post('/atomic/lightning')">Lightning</button>
+      <button class="atomic" onclick="post('/atomic/off')">Off</button>
+    </div>
+  </section>
+
+  <section class="special-fog">
+    <h2>Fog</h2>
+    <div class="row">
+      <label for="fog">Level</label>
+      <input type="range" id="fog" min="0" max="255" value="0">
+      <span class="value" id="fogval">0</span>
+    </div>
+    <div class="grid tight">
+      <button class="fog-puff" onclick="post('/fog/puff')">PUFF (3s)</button>
+      <button onclick="(()=>{ $('fog').value=0; $('fogval').textContent=0; post('/fog/off'); })()">Off</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Scenes <span style="float:right;font-weight:400;text-transform:none;letter-spacing:0;font-size:11px;opacity:.6">tap to start, tap running to stop</span></h2>
+    <div class="grid" id="scenes"></div>
+  </section>
+
+  <div class="blackout-bar">
+    <div>
+      <button class="blackout" onclick="post('/blackout')">BLACKOUT</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function showToast(msg, kind) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (kind === 'error' ? ' error' : '');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(() => { t.className = 'toast'; }, 2200);
+}
+
+async function post(path, body) {
+  try {
+    const r = await fetch(path, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: body ? JSON.stringify(body) : '{}',
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      showToast(err.detail || `${r.status}: ${path}`, 'error');
+    }
+    return r;
+  } catch (e) {
+    showToast(`network: ${e.message}`, 'error');
+  }
+}
+
+function throttle(fn, ms) {
+  let last = 0, pending = null, args;
+  return (...a) => {
+    args = a;
+    const now = Date.now();
+    if (now - last >= ms) { last = now; fn(...args); }
+    else if (!pending) {
+      pending = setTimeout(() => {
+        last = Date.now(); pending = null; fn(...args);
+      }, ms - (now - last));
+    }
+  };
+}
+
+function hexToRgb(hex) {
+  const v = parseInt(hex.slice(1), 16);
+  return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
+}
+
+let curW = 0, curDim = 255;
+
+const sendColor = throttle(() => {
+  const { r, g, b } = hexToRgb($('color').value);
+  post('/tripars/color', { r, g, b, w: curW });
+}, 60);
+const sendDim = throttle(() => post('/tripars/dim', { level: curDim }), 60);
+const sendFog = throttle((v) => post('/fog/level', { level: v }), 60);
+
+$('color').addEventListener('input', () => { $('colorval').textContent = $('color').value; sendColor(); });
+$('white').addEventListener('input', () => { curW = +$('white').value; $('whiteval').textContent = curW; sendColor(); });
+$('dim').addEventListener('input', () => { curDim = +$('dim').value; $('dimval').textContent = curDim; sendDim(); });
+$('fog').addEventListener('input', () => { const v = +$('fog').value; $('fogval').textContent = v; sendFog(v); });
+
+async function loadScenes() {
+  try {
+    const r = await fetch('/scenes');
+    const data = await r.json();
+    const grid = $('scenes');
+    grid.innerHTML = '';
+    for (const s of data.scenes) {
+      const b = document.createElement('button');
+      b.dataset.key = s.key;
+      b.textContent = s.label;
+      b.onclick = async () => {
+        const path = b.classList.contains('running') ? '/scene/stop' : `/scene/${s.key}`;
+        await post(path);
+        updateStatus();
+      };
+      grid.appendChild(b);
+    }
+    updateStatus(data.running);
+  } catch (e) {
+    showToast(`failed to load scenes: ${e.message}`, 'error');
+  }
+}
+
+async function updateStatus(known) {
+  let running = known;
+  if (running === undefined) {
+    try { running = (await (await fetch('/scenes')).json()).running; } catch {}
+  }
+  const sEl = $('status'), txt = $('statusText');
+  if (running) {
+    sEl.classList.add('running');
+    txt.textContent = `Running: ${running}`;
+  } else {
+    sEl.classList.remove('running');
+    txt.textContent = 'Ready';
+  }
+  document.querySelectorAll('#scenes button').forEach((b) => {
+    b.classList.toggle('running', b.dataset.key === running);
+  });
+}
+
+loadScenes();
+setInterval(updateStatus, 2000);
+</script>
+</body>
+</html>

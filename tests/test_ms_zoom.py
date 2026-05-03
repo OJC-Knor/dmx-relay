@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from dmx import Universe
 from fixtures import MSZoom250
 
-PORT = "/dev/cu.usbserial-BG03CYC2"
+from rig import PORT
 ADDRESSES = [182, 198, 214]
 
 

@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dmx import Universe
 
-PORT = "/dev/cu.usbserial-BG03CYC2"
+from rig import PORT
 
 
 def parse(line: str) -> tuple[str, int, int, int] | None:

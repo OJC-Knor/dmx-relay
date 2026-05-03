@@ -4,6 +4,8 @@ Each scene takes (tripars, focus, groot, stop) where `stop` is a
 threading.Event. Scenes loop forever and exit promptly when stop is set.
 Atomic and Fog are intentionally NOT touched here — they're driven
 manually from the UI.
+
+The `SCENES` list at the bottom is the registry the web UI consumes.
 """
 
 from __future__ import annotations
@@ -13,6 +15,9 @@ import math
 import random
 import threading
 import time
+from typing import Callable
+
+Scene = Callable[..., None]
 
 # ----- helpers -----
 
@@ -44,7 +49,7 @@ def _ensure_visible(tripars, focus, groot) -> None:
 
 # ----- scenes -----
 
-def scene_1_atmosphere(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_atmosphere(tripars, focus, groot, stop: threading.Event) -> None:
     _ensure_visible(tripars, focus, groot)
     for h in focus:
         h._set("pan_tilt_speed", 220)
@@ -74,7 +79,7 @@ def scene_1_atmosphere(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_2_sunrise(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_sunrise(tripars, focus, groot, stop: threading.Event) -> None:
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.dim(180)
@@ -98,7 +103,7 @@ def scene_2_sunrise(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_3_chase(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_chase(tripars, focus, groot, stop: threading.Event) -> None:
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.color("blue")
@@ -124,7 +129,7 @@ def scene_3_chase(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 60)
 
 
-def scene_4_rainbow(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_rainbow(tripars, focus, groot, stop: threading.Event) -> None:
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.dim(255)
@@ -156,7 +161,7 @@ def scene_4_rainbow(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_5_buildup(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_buildup(tripars, focus, groot, stop: threading.Event) -> None:
     """Cyclic energy ramp: builds up over 15s then resets, on repeat."""
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
@@ -183,7 +188,7 @@ def scene_5_buildup(tripars, focus, groot, stop: threading.Event) -> None:
             time.sleep(1 / 40)
 
 
-def scene_6_drop(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_drop(tripars, focus, groot, stop: threading.Event) -> None:
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.color("white")
@@ -202,7 +207,7 @@ def scene_6_drop(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 40)
 
 
-def scene_7_calm(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_calm(tripars, focus, groot, stop: threading.Event) -> None:
     _ensure_visible(tripars, focus, groot)
     for h in focus:
         h.shutter("open")
@@ -230,7 +235,7 @@ def scene_7_calm(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_8_disco(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_disco(tripars, focus, groot, stop: threading.Event) -> None:
     _ensure_visible(tripars, focus, groot)
     gobos = ["gobo1", "gobo2", "gobo3", "gobo4"]
     for h, g in zip(focus, gobos):
@@ -267,7 +272,7 @@ def scene_8_disco(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_9_climax(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_climax(tripars, focus, groot, stop: threading.Event) -> None:
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.shutter("strobe")
@@ -293,7 +298,7 @@ def scene_9_climax(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 40)
 
 
-def scene_10_fade(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_fade(tripars, focus, groot, stop: threading.Event) -> None:
     """Fade to black, then hold dark until interrupted."""
     _ensure_visible(tripars, focus, groot)
 
@@ -319,7 +324,7 @@ def scene_10_fade(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(0.1)
 
 
-def scene_11_beam_sweep(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_beam_sweep(tripars, focus, groot, stop: threading.Event) -> None:
     """Beam sweep — each head runs the cycle horizontal -> on -> tilt down ->
     off -> return on its own staggered phase, so it looks like a wave."""
     _ensure_visible(tripars, focus, groot)
@@ -367,7 +372,7 @@ def scene_11_beam_sweep(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 40)
 
 
-def scene_12_police(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_police(tripars, focus, groot, stop: threading.Event) -> None:
     """Red/blue alternating flash — tripars and heads in sync."""
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
@@ -390,7 +395,7 @@ def scene_12_police(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 60)
 
 
-def scene_13_fire(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_fire(tripars, focus, groot, stop: threading.Event) -> None:
     """Flickering warm reds/oranges on tripars; heads slowly drift."""
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
@@ -410,7 +415,7 @@ def scene_13_fire(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(0.06)
 
 
-def scene_14_ocean(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_ocean(tripars, focus, groot, stop: threading.Event) -> None:
     """Blue/teal waves on tripars; heads drift slowly."""
     _ensure_visible(tripars, focus, groot)
     for h in focus:
@@ -432,7 +437,7 @@ def scene_14_ocean(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_15_sunset(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_sunset(tripars, focus, groot, stop: threading.Event) -> None:
     """Slow drift through warm to cool palette, looping."""
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
@@ -464,7 +469,7 @@ def scene_15_sunset(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_16_wipe(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_wipe(tripars, focus, groot, stop: threading.Event) -> None:
     """Color wipes across the tripars left-right-left-right..."""
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
@@ -499,7 +504,7 @@ def scene_16_wipe(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 60)
 
 
-def scene_17_stars(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_stars(tripars, focus, groot, stop: threading.Event) -> None:
     """Random twinkles — random tripars flash white briefly on a deep blue bed."""
     _ensure_visible(tripars, focus, groot)
     for h in focus:
@@ -525,7 +530,7 @@ def scene_17_stars(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_18_evenodd(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_evenodd(tripars, focus, groot, stop: threading.Event) -> None:
     """Even/odd Tripars hold contrasting colors; swap periodically."""
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
@@ -556,3 +561,31 @@ def scene_18_evenodd(tripars, focus, groot, stop: threading.Event) -> None:
         for h in focus + groot:
             h.position(pan, tilt)
         time.sleep(1 / 30)
+
+
+# ----- registry: consumed by app.py -----
+
+SCENES: list[tuple[str, str, Scene]] = [
+    ("atmosphere", "Atmosphere", scene_atmosphere),
+    ("sunrise",    "Sunrise",    scene_sunrise),
+    ("chase",      "Chase",      scene_chase),
+    ("rainbow",    "Rainbow",    scene_rainbow),
+    ("buildup",    "Buildup",    scene_buildup),
+    ("drop",       "Drop",       scene_drop),
+    ("calm",       "Calm",       scene_calm),
+    ("disco",      "Disco",      scene_disco),
+    ("climax",     "Climax",     scene_climax),
+    ("fade",       "Fade out",   scene_fade),
+    ("beam_sweep", "Beam sweep", scene_beam_sweep),
+    ("police",     "Police",     scene_police),
+    ("fire",       "Fire",       scene_fire),
+    ("ocean",      "Ocean",      scene_ocean),
+    ("sunset",     "Sunset",     scene_sunset),
+    ("wipe",       "Wipe",       scene_wipe),
+    ("stars",      "Stars",      scene_stars),
+    ("evenodd",    "Even/Odd",   scene_evenodd),
+]
+
+SCENE_BY_KEY: dict[str, tuple[str, Scene]] = {
+    k: (label, fn) for k, label, fn in SCENES
+}
