@@ -19,9 +19,17 @@ import serial
 
 
 class Universe:
-    def __init__(self, port: str, fps: int = 30) -> None:
+    """One DMX universe.
+
+    If `mock=True` (or the serial port can't be opened) the sender thread
+    runs but doesn't write to any hardware — the channel array is still
+    updated, so the rest of the app works for visualization / dev.
+    """
+
+    def __init__(self, port: str, fps: int = 30, mock: bool = False) -> None:
         self.port = port
         self.period = 1.0 / fps
+        self.mock = mock
         self._channels = bytearray(512)
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -32,15 +40,21 @@ class Universe:
     # ----- lifecycle -----
 
     def start(self) -> None:
-        self._ser = serial.Serial(
-            port=self.port,
-            baudrate=250_000,
-            bytesize=serial.EIGHTBITS,
-            parity=serial.PARITY_NONE,
-            stopbits=serial.STOPBITS_TWO,
-            timeout=0,
-            write_timeout=2,
-        )
+        if not self.mock:
+            try:
+                self._ser = serial.Serial(
+                    port=self.port,
+                    baudrate=250_000,
+                    bytesize=serial.EIGHTBITS,
+                    parity=serial.PARITY_NONE,
+                    stopbits=serial.STOPBITS_TWO,
+                    timeout=0,
+                    write_timeout=2,
+                )
+            except serial.SerialException as e:
+                print(f"[dmx-tx] serial port unavailable ({e}); falling back to mock mode")
+                self.mock = True
+                self._ser = None
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, daemon=True, name="dmx-tx")
         self._thread.start()
@@ -83,13 +97,13 @@ class Universe:
     # ----- internals -----
 
     def _run(self) -> None:
-        assert self._ser is not None
         next_tick = time.monotonic()
         try:
             while not self._stop.is_set():
-                with self._lock:
-                    snapshot = bytes(self._channels)
-                self._send(snapshot)
+                if not self.mock:
+                    with self._lock:
+                        snapshot = bytes(self._channels)
+                    self._send(snapshot)
                 next_tick += self.period
                 sleep = next_tick - time.monotonic()
                 if sleep > 0:
@@ -102,7 +116,8 @@ class Universe:
 
     def _send(self, channels: bytes) -> None:
         ser = self._ser
-        assert ser is not None
+        if ser is None:
+            return
         ser.baudrate = 90_000
         ser.write(b"\x00")  # ~111us low = DMX BREAK
         ser.flush()

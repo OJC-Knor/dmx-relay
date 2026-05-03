@@ -17,6 +17,20 @@ ATOMIC_ADDR = 100
 FOG_ADDR = 500
 
 
+def fixture_ids() -> list[dict]:
+    """Stable IDs + display metadata for the layout editor / viz."""
+    out: list[dict] = []
+    for i, a in enumerate(TRIPAR_ADDRS, 1):
+        out.append({"id": f"tripar-{i}", "type": "tripar", "label": f"T{i}", "addr": a})
+    for i, a in enumerate(FOCUS_ADDRS, 1):
+        out.append({"id": f"focus-{i}", "type": "focus", "label": f"F{i}", "addr": a})
+    for i, a in enumerate(GROOT_ADDRS, 1):
+        out.append({"id": f"groot-{i}", "type": "groot", "label": f"G{i}", "addr": a})
+    out.append({"id": "atomic", "type": "atomic", "label": "ATM", "addr": ATOMIC_ADDR})
+    out.append({"id": "fog", "type": "fog", "label": "FOG", "addr": FOG_ADDR})
+    return out
+
+
 @dataclass
 class Rig:
     tripars: list[MegaTripar]

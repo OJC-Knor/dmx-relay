@@ -4,6 +4,7 @@ Run: uv run python app.py
 Open: http://localhost:8000/  (or your LAN IP for phone access)
 """
 
+import json
 import threading
 import time
 import traceback
@@ -16,10 +17,13 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from dmx import Universe
-from rig import PORT, Rig, build_rig
+from rig import PORT, Rig, build_rig, fixture_ids
 from scenes import SCENES, SCENE_BY_KEY
 
-INDEX_PATH = Path(__file__).parent / "templates" / "index.html"
+ROOT = Path(__file__).parent
+INDEX_PATH = ROOT / "templates" / "index.html"
+EDITOR_PATH = ROOT / "templates" / "editor.html"
+LAYOUT_PATH = ROOT / "state" / "layout.json"
 
 # global state, initialized in lifespan
 _universe: Universe | None = None
@@ -244,11 +248,59 @@ def blackout():
     return {"ok": True}
 
 
+# ----- layout editor -----
+
+DEFAULT_LAYOUT: dict[str, dict[str, float]] = {
+    # Tripars in two rows of 6 across the front of the stage
+    **{f"tripar-{i + 1}": {"x": 0.05 + (i % 6) * 0.16, "y": 0.62 + (i // 6) * 0.18}
+       for i in range(12)},
+    # Focus Spots on a top truss
+    **{f"focus-{i + 1}": {"x": 0.10 + i * 0.25, "y": 0.10}
+       for i in range(4)},
+    # MS Zoom 250 (Groot) on a mid truss
+    **{f"groot-{i + 1}": {"x": 0.20 + i * 0.30, "y": 0.30}
+       for i in range(3)},
+    "atomic": {"x": 0.85, "y": 0.10},
+    "fog":    {"x": 0.05, "y": 0.95},
+}
+
+
+def _load_layout() -> dict:
+    if LAYOUT_PATH.exists():
+        try:
+            return json.loads(LAYOUT_PATH.read_text())
+        except json.JSONDecodeError:
+            pass
+    return DEFAULT_LAYOUT
+
+
+@app.get("/api/rig")
+def get_rig():
+    return {"fixtures": fixture_ids()}
+
+
+@app.get("/api/layout")
+def get_layout():
+    return _load_layout()
+
+
+@app.post("/api/layout")
+def save_layout(layout: dict):
+    LAYOUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    LAYOUT_PATH.write_text(json.dumps(layout, indent=2, sort_keys=True))
+    return {"ok": True}
+
+
 # ----- UI -----
 
 @app.get("/", response_class=HTMLResponse)
 def index():
     return INDEX_PATH.read_text()
+
+
+@app.get("/editor", response_class=HTMLResponse)
+def editor():
+    return EDITOR_PATH.read_text()
 
 
 if __name__ == "__main__":

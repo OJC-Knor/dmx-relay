@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>soos-lights — layout</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0a0a0c;
+    --card: #16161a;
+    --line: #2a2a30;
+    --text: #f4f4f6;
+    --muted: #8a8a94;
+    --accent: #6c8eff;
+    --tripar: #4a8cff;
+    --focus:  #ff9a3c;
+    --groot:  #ad6cff;
+    --atomic: #ff4d6a;
+    --fog:    #6cd9ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); }
+  body {
+    font-family: -apple-system, system-ui, sans-serif;
+    margin: 0; padding: 16px; color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 14px; gap: 12px;
+  }
+  h1 { margin: 0; font-size: 20px; font-weight: 700; }
+  .actions { display: flex; gap: 8px; }
+  a, button {
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--line); padding: 9px 14px;
+    border-radius: 8px; font-size: 13px; font-weight: 500;
+    cursor: pointer; text-decoration: none;
+  }
+  button:hover, a:hover { background: #232329; }
+  button.primary { background: var(--accent); color: #000; border-color: var(--accent); }
+
+  #stage {
+    position: relative; width: 100%; aspect-ratio: 16 / 10;
+    background:
+      radial-gradient(circle at 50% 5%, #1a1a22 0%, #0a0a0c 60%),
+      var(--bg);
+    border: 1px solid var(--line); border-radius: 12px;
+    overflow: hidden; touch-action: none;
+  }
+  #stage::before {
+    content: "STAGE FRONT"; position: absolute; bottom: 6px; left: 50%;
+    transform: translateX(-50%); font-size: 10px; letter-spacing: 2px;
+    color: var(--muted);
+  }
+  .fixture {
+    position: absolute; width: 56px; height: 32px;
+    transform: translate(-50%, -50%);  /* anchor at center */
+    border-radius: 8px;
+    color: white; font-size: 12px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    cursor: grab; user-select: none; touch-action: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,.4);
+    border: 1px solid rgba(255,255,255,.15);
+    transition: box-shadow .15s, transform .05s;
+  }
+  .fixture:active, .fixture.dragging {
+    cursor: grabbing;
+    box-shadow: 0 4px 18px rgba(108,142,255,.5);
+    z-index: 10;
+  }
+  .fixture.tripar { background: var(--tripar); }
+  .fixture.focus  { background: var(--focus); color: #1a0d04; }
+  .fixture.groot  { background: var(--groot); }
+  .fixture.atomic { background: var(--atomic); }
+  .fixture.fog    { background: var(--fog); color: #003040; }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 12px;
+    margin-top: 14px; font-size: 12px; color: var(--muted);
+  }
+  .legend > span { display: flex; align-items: center; gap: 6px; }
+  .swatch {
+    display: inline-block; width: 14px; height: 14px; border-radius: 3px;
+    border: 1px solid rgba(255,255,255,.15);
+  }
+
+  .toast {
+    position: fixed; left: 50%; top: 16px; transform: translateX(-50%);
+    background: var(--card); border: 1px solid var(--line);
+    padding: 8px 14px; border-radius: 8px; font-size: 13px;
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+    z-index: 100;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Rig layout</h1>
+    <div class="actions">
+      <a href="/">← Controls</a>
+      <button onclick="resetLayout()">Reset</button>
+      <button class="primary" onclick="saveLayout()">Save</button>
+    </div>
+  </header>
+
+  <div id="stage"></div>
+
+  <div class="legend">
+    <span><span class="swatch" style="background:var(--tripar)"></span> Tripar</span>
+    <span><span class="swatch" style="background:var(--focus)"></span> Focus Spot</span>
+    <span><span class="swatch" style="background:var(--groot)"></span> Groot (MS Zoom)</span>
+    <span><span class="swatch" style="background:var(--atomic)"></span> Atomic</span>
+    <span><span class="swatch" style="background:var(--fog)"></span> Fog</span>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const stage = $('stage');
+
+let positions = {};   // id -> {x, y} in 0..1
+let fixtures = [];
+
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(() => t.classList.remove('show'), 1600);
+}
+
+function render() {
+  stage.innerHTML = '';
+  for (const f of fixtures) {
+    const pos = positions[f.id] || { x: 0.5, y: 0.5 };
+    const el = document.createElement('div');
+    el.className = `fixture ${f.type}`;
+    el.dataset.id = f.id;
+    el.textContent = f.label;
+    el.title = `${f.id} • DMX ${f.addr}`;
+    el.style.left = (pos.x * 100) + '%';
+    el.style.top = (pos.y * 100) + '%';
+    attachDrag(el);
+    stage.appendChild(el);
+  }
+}
+
+function attachDrag(el) {
+  let dragOffset = null;
+  el.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    el.classList.add('dragging');
+    const r = el.getBoundingClientRect();
+    dragOffset = {
+      // pointer offset from element center
+      dx: e.clientX - (r.left + r.width / 2),
+      dy: e.clientY - (r.top + r.height / 2),
+    };
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!dragOffset) return;
+    const stageRect = stage.getBoundingClientRect();
+    const x = (e.clientX - dragOffset.dx - stageRect.left) / stageRect.width;
+    const y = (e.clientY - dragOffset.dy - stageRect.top) / stageRect.height;
+    const cx = Math.max(0.02, Math.min(0.98, x));
+    const cy = Math.max(0.02, Math.min(0.98, y));
+    el.style.left = (cx * 100) + '%';
+    el.style.top = (cy * 100) + '%';
+    positions[el.dataset.id] = { x: cx, y: cy };
+  });
+  const end = (e) => {
+    if (!dragOffset) return;
+    dragOffset = null;
+    el.classList.remove('dragging');
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+}
+
+async function saveLayout() {
+  const r = await fetch('/api/layout', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(positions),
+  });
+  showToast(r.ok ? 'Saved' : 'Save failed');
+}
+
+async function resetLayout() {
+  if (!confirm('Reset layout to defaults?')) return;
+  const r = await fetch('/api/layout', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({}),  // empty -> server returns defaults next load
+  });
+  if (r.ok) {
+    await load();
+    showToast('Reset');
+  }
+}
+
+async function load() {
+  const [rigRes, layoutRes] = await Promise.all([
+    fetch('/api/rig').then(r => r.json()),
+    fetch('/api/layout').then(r => r.json()),
+  ]);
+  fixtures = rigRes.fixtures;
+  positions = layoutRes;
+  render();
+}
+
+load();
+</script>
+</body>
+</html>
