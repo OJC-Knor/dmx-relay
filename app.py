@@ -273,24 +273,31 @@ DEFAULT_LAYOUT: dict[str, dict[str, float]] = {
     # Tripars in two rows of 6 across the front of the stage
     **{f"tripar-{i + 1}": {"x": 0.05 + (i % 6) * 0.16, "y": 0.62 + (i // 6) * 0.18}
        for i in range(12)},
+    # Pinspots along the upper edge
+    **{f"pinspot-{i + 1}": {"x": 0.10 + i * 0.10, "y": 0.04}
+       for i in range(3)},
+    "spotlight": {"x": 0.45, "y": 0.04},
     # Focus Spots on a top truss
-    **{f"focus-{i + 1}": {"x": 0.10 + i * 0.25, "y": 0.10}
+    **{f"focus-{i + 1}": {"x": 0.55 + i * 0.10, "y": 0.04}
        for i in range(4)},
     # MS Zoom 250 (Groot) on a mid truss
     **{f"groot-{i + 1}": {"x": 0.20 + i * 0.30, "y": 0.30}
        for i in range(3)},
-    "atomic": {"x": 0.85, "y": 0.10},
+    "atomic": {"x": 0.95, "y": 0.04},
     "fog":    {"x": 0.05, "y": 0.95},
 }
 
 
 def _load_layout() -> dict:
+    """Saved positions override defaults; new fixtures still get a sensible
+    starting spot so they don't all stack at (0.5, 0.5)."""
+    saved: dict = {}
     if LAYOUT_PATH.exists():
         try:
-            return json.loads(LAYOUT_PATH.read_text())
+            saved = json.loads(LAYOUT_PATH.read_text())
         except json.JSONDecodeError:
             pass
-    return DEFAULT_LAYOUT
+    return {**DEFAULT_LAYOUT, **saved}
 
 
 @app.get("/api/rig")
