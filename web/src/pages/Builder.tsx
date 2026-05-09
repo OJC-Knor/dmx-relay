@@ -1,10 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { HexColorPicker } from "react-colorful";
+import { motion } from "framer-motion";
+import { toast } from "sonner";
+import {
+  ChevronDown, FolderOpen, Hand, Minus, MousePointerClick, Pause, Play, Plus,
+  Save, Trash2, Wand2, X,
+} from "lucide-react";
 
-import { Button } from "@/components/Button";
-import { Section } from "@/components/Section";
-import { useToast } from "@/components/Toast";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import {
+  DropdownContent, DropdownItem, DropdownLabel, DropdownMenu, DropdownSeparator, DropdownTrigger,
+} from "@/components/ui/DropdownMenu";
+import { Field, Input } from "@/components/ui/Field";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover";
+import { ToggleGroup, ToggleItem } from "@/components/ui/ToggleGroup";
+import { Tooltip } from "@/components/ui/Tooltip";
 import {
   deletePattern, fetchPatterns, fetchRig, fetchScenes, playScene, savePattern, stopScene,
 } from "@/lib/api";
@@ -60,45 +73,32 @@ const TYPE_GROUPS: { type: FixtureMeta["type"]; label: string; rgb: boolean }[] 
   { type: "fog",       label: "Fog",           rgb: false },
 ];
 
-// each "row" the grid renders is one of these:
 type RowKind = "color" | "gobo" | "pos";
 type Row = { trackId: string; label: string; kind: RowKind; rgbRow: boolean };
 
-// expand a fixture into its track rows. For Tripars/Pinspots/etc:
-// just one colour row. For Focus heads: color + gobo + pos. For Groot:
-// color + pos (no gobo wheel exposed yet).
 function fixtureRows(f: FixtureMeta): Row[] {
-  if (f.type === "focus") {
-    return [
-      { trackId: f.id,            label: `${f.label} colour`, kind: "color", rgbRow: false },
-      { trackId: `${f.id}.gobo`,  label: `${f.label} gobo`,   kind: "gobo",  rgbRow: false },
-      { trackId: `${f.id}.pos`,   label: `${f.label} pos`,    kind: "pos",   rgbRow: false },
-    ];
-  }
-  if (f.type === "groot") {
-    return [
-      { trackId: f.id,           label: `${f.label} colour`, kind: "color", rgbRow: false },
-      { trackId: `${f.id}.pos`,  label: `${f.label} pos`,    kind: "pos",   rgbRow: false },
-    ];
-  }
-  return [
-    { trackId: f.id, label: f.label, kind: "color", rgbRow: f.type === "tripar" },
+  if (f.type === "focus") return [
+    { trackId: f.id,           label: `${f.label} colour`, kind: "color", rgbRow: false },
+    { trackId: `${f.id}.gobo`, label: `${f.label} gobo`,   kind: "gobo",  rgbRow: false },
+    { trackId: `${f.id}.pos`,  label: `${f.label} pos`,    kind: "pos",   rgbRow: false },
   ];
+  if (f.type === "groot") return [
+    { trackId: f.id,          label: `${f.label} colour`, kind: "color", rgbRow: false },
+    { trackId: `${f.id}.pos`, label: `${f.label} pos`,    kind: "pos",   rgbRow: false },
+  ];
+  return [{ trackId: f.id, label: f.label, kind: "color", rgbRow: f.type === "tripar" }];
 }
-
-// ----- track storage -----
 
 type Cell = RgbCell | string | null;
 type Tracks = Record<string, Cell[]>;
 
-function blank(steps: number, rows: Row[]): Tracks {
-  return Object.fromEntries(rows.map((r) => [r.trackId, Array.from({ length: steps }, () => null)]));
-}
+const blank = (steps: number, rows: Row[]): Tracks =>
+  Object.fromEntries(rows.map((r) => [r.trackId, Array.from({ length: steps }, () => null)]));
 
-function reshape(tracks: Tracks, steps: number, rows: Row[]): Tracks {
+function reshape(t: Tracks, steps: number, rows: Row[]): Tracks {
   const out: Tracks = {};
   for (const r of rows) {
-    const arr = (tracks[r.trackId] ?? []).slice(0, steps);
+    const arr = (t[r.trackId] ?? []).slice(0, steps);
     while (arr.length < steps) arr.push(null);
     out[r.trackId] = arr as Cell[];
   }
@@ -108,9 +108,7 @@ function reshape(tracks: Tracks, steps: number, rows: Row[]): Tracks {
 // ----- component -----
 
 export default function Builder() {
-  const toast = useToast();
   const qc = useQueryClient();
-
   const rig = useQuery({ queryKey: ["rig"], queryFn: fetchRig });
   const fixtures = rig.data?.fixtures ?? [];
   const allRows = useMemo<Row[]>(() => fixtures.flatMap(fixtureRows), [fixtures]);
@@ -123,16 +121,14 @@ export default function Builder() {
   const [colorIdx, setColorIdx] = useState(1);
   const [customColor, setCustomColor] = useState<RgbCell>([255, 255, 255]);
   const [useCustom, setUseCustom] = useState(false);
-  const [showPicker, setShowPicker] = useState(false);
-  const [goboIdx, setGoboIdx] = useState(2);  // gobo1 by default
-  const [posIdx, setPosIdx] = useState(1);    // center by default
+  const [goboIdx, setGoboIdx] = useState(2);
+  const [posIdx, setPosIdx] = useState(1);
 
   const [enabledTypes, setEnabledTypes] = useState<Set<string>>(
     () => new Set(["tripar", "pinspot", "spotlight", "atomic", "focus", "groot", "fog"]),
   );
   const [paintMode, setPaintMode] = useState<"draw" | "tap">("draw");
 
-  // initialise tracks once we know the rows
   useEffect(() => {
     if (allRows.length && Object.keys(tracks).length === 0) {
       setTracks(blank(steps, allRows));
@@ -194,9 +190,9 @@ export default function Builder() {
 
   const save = async () => {
     const n = (name || "").trim();
-    if (!n) { toast("Name the pattern first", "error"); return; }
+    if (!n) { toast.error("Name the pattern first"); return; }
     await saveMut.mutateAsync({ name: n, p: packPattern() });
-    toast("Saved");
+    toast.success(`Saved “${n}”`);
   };
 
   const togglePlay = async () => {
@@ -232,14 +228,12 @@ export default function Builder() {
           const [r0, g0, b0] = c as number[];
           return (r0 || g0 || b0) ? ([r0, g0, b0] as RgbCell) : null;
         }
-        return c as string;  // already a name
+        return c as string;
       });
       while (next[r.trackId].length < p.steps) next[r.trackId].push(null);
     }
     setTracks(next);
   };
-
-  // ----- painting -----
 
   const dragging = useRef(false);
   const brushFor = (kind: RowKind): Cell => {
@@ -248,9 +242,8 @@ export default function Builder() {
       return COLOR_PALETTE[colorIdx].rgb ? ([...(COLOR_PALETTE[colorIdx].rgb as RgbCell)] as RgbCell) : null;
     }
     if (kind === "gobo") return GOBOS[goboIdx].value;
-    /* pos */            return POSITIONS[posIdx].value;
+    return POSITIONS[posIdx].value;
   };
-
   const paint = (row: Row, col: number) => {
     const c = brushFor(row.kind);
     setTracks((t) => {
@@ -262,124 +255,164 @@ export default function Builder() {
     });
   };
 
-  // group rows by fixture type for header dividers + filtering
   const byType = TYPE_GROUPS.map((g) => ({
     ...g,
-    rows: fixtures
-      .filter((f) => f.type === g.type)
-      .flatMap(fixtureRows),
+    rows: fixtures.filter((f) => f.type === g.type).flatMap(fixtureRows),
   })).filter((g) => g.rows.length > 0);
 
-  // ----- render -----
+  const savedNames = Object.keys(patterns.data?.patterns ?? {})
+    .filter((k) => !k.startsWith("__")).sort();
 
   return (
-    <>
-      {/* Top toolbar */}
-      <Section>
-        <div className="flex flex-wrap items-end gap-3">
-          <Field label="Name">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="my pattern"
-              className="w-44 rounded-lg border border-line bg-bg px-2.5 py-2 text-sm"
-            />
-          </Field>
-          <Field label="Steps">
-            <input
-              type="number"
-              value={steps}
-              min={2}
-              max={64}
-              onChange={(e) => onResize(+e.target.value || 16)}
-              className="w-20 rounded-lg border border-line bg-bg px-2.5 py-2 text-sm tabular-nums"
-            />
-          </Field>
-          <Field label="BPM">
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                value={bpm}
-                min={40}
-                max={240}
-                onChange={(e) => setBpm(Math.max(40, Math.min(240, +e.target.value || 120)))}
-                className="w-20 rounded-lg border border-line bg-bg px-2.5 py-2 text-sm tabular-nums"
+    <div className="space-y-4">
+      {/* Transport / metadata bar */}
+      <Card>
+        <CardBody className="!pt-4">
+          <div className="flex flex-wrap items-end gap-4">
+            <Field label="Name" className="min-w-[200px]">
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="my pattern"
               />
-              <span className="text-[11px] text-muted tabular-nums">{stepMs} ms/step</span>
-            </div>
-          </Field>
-          <Field label="Saved">
-            <div className="flex gap-2">
-              <select
-                onChange={(e) => { if (e.target.value) loadPattern(e.target.value); }}
-                value={name || ""}
-                className="rounded-lg border border-line bg-bg px-2 py-2 text-sm"
-              >
-                <option value="">— pick —</option>
-                {Object.keys(patterns.data?.patterns ?? {})
-                  .filter((k) => !k.startsWith("__"))
-                  .sort()
-                  .map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
-              {name && !name.startsWith("__") && (
-                <Button
-                  className="!min-h-0 !py-1.5"
-                  onClick={async () => {
-                    if (!confirm(`Delete "${name}"?`)) return;
-                    await delMut.mutateAsync(name);
-                    toast("Deleted");
-                    setName("");
-                  }}
-                >Delete</Button>
-              )}
-            </div>
-          </Field>
+            </Field>
 
-          <div className="ml-auto flex flex-wrap gap-2">
-            <Button onClick={clear}>Clear</Button>
-            <Button onClick={save}>Save</Button>
-            <Button variant="primary" onClick={togglePlay}>
-              {playingThis ? "■ Stop" : "▶ Play"}
-            </Button>
+            <Field label="Steps">
+              <div className="flex items-center gap-1">
+                <Button size="icon" variant="outline" className="!h-10 !w-10" onClick={() => onResize(steps - 1)}>
+                  <Minus className="size-3.5" />
+                </Button>
+                <Input
+                  type="number"
+                  value={steps}
+                  min={2}
+                  max={64}
+                  onChange={(e) => onResize(+e.target.value || 16)}
+                  className="w-16 text-center tabular-nums"
+                />
+                <Button size="icon" variant="outline" className="!h-10 !w-10" onClick={() => onResize(steps + 1)}>
+                  <Plus className="size-3.5" />
+                </Button>
+              </div>
+            </Field>
+
+            <Field label={`BPM • ${stepMs}ms/step`}>
+              <div className="flex items-center gap-1">
+                <Button size="icon" variant="outline" className="!h-10 !w-10" onClick={() => setBpm((v) => Math.max(40, v - 1))}>
+                  <Minus className="size-3.5" />
+                </Button>
+                <Input
+                  type="number"
+                  value={bpm}
+                  min={40}
+                  max={240}
+                  onChange={(e) => setBpm(Math.max(40, Math.min(240, +e.target.value || 120)))}
+                  className="w-16 text-center tabular-nums"
+                />
+                <Button size="icon" variant="outline" className="!h-10 !w-10" onClick={() => setBpm((v) => Math.min(240, v + 1))}>
+                  <Plus className="size-3.5" />
+                </Button>
+              </div>
+            </Field>
+
+            <div className="ml-auto flex flex-wrap items-end gap-2">
+              <DropdownMenu>
+                <DropdownTrigger asChild>
+                  <Button variant="outline">
+                    <FolderOpen className="size-4" /> Patterns
+                    <ChevronDown className="size-3 opacity-60" />
+                  </Button>
+                </DropdownTrigger>
+                <DropdownContent>
+                  <DropdownLabel>Saved patterns</DropdownLabel>
+                  {savedNames.length === 0 && (
+                    <div className="px-3 py-3 text-xs text-mutedFg">No patterns yet</div>
+                  )}
+                  {savedNames.map((n) => (
+                    <DropdownItem key={n} onSelect={() => loadPattern(n)}>
+                      <Wand2 className="size-3.5 text-accent" />
+                      {n}
+                    </DropdownItem>
+                  ))}
+                  {name && !name.startsWith("__") && savedNames.includes(name) && (
+                    <>
+                      <DropdownSeparator />
+                      <DropdownItem
+                        danger
+                        onSelect={async () => {
+                          if (!confirm(`Delete "${name}"?`)) return;
+                          await delMut.mutateAsync(name);
+                          toast.success(`Deleted “${name}”`);
+                          setName("");
+                        }}
+                      >
+                        <Trash2 className="size-3.5" />
+                        Delete current
+                      </DropdownItem>
+                    </>
+                  )}
+                </DropdownContent>
+              </DropdownMenu>
+
+              <Tooltip content="Clear all cells">
+                <Button variant="ghost" onClick={clear}>
+                  <X className="size-4" /> Clear
+                </Button>
+              </Tooltip>
+
+              <Button variant="outline" onClick={save}>
+                <Save className="size-4" /> Save
+              </Button>
+
+              <Button variant="primary" onClick={togglePlay} className="min-w-[120px]">
+                {playingThis ? (
+                  <><Pause className="size-4" /> Stop</>
+                ) : (
+                  <><Play className="size-4" /> Play</>
+                )}
+              </Button>
+            </div>
           </div>
-        </div>
-      </Section>
+        </CardBody>
+      </Card>
 
       {/* Brushes */}
-      <Section title="Brushes" hint={<span>painting auto-uses the brush matching each row</span>}>
-        <div className="space-y-3">
+      <Card>
+        <CardHeader title="Brushes" subtitle="Painting auto-uses the brush matching each row" />
+        <CardBody className="space-y-4">
           <BrushRow label="Color">
             {COLOR_PALETTE.map((c, i) => (
-              <button
-                key={c.name}
-                title={c.name}
-                onClick={() => { setColorIdx(i); setUseCustom(false); }}
-                className={cn(
-                  "h-8 w-8 rounded-md border-2 transition relative",
-                  !useCustom && i === colorIdx ? "border-text scale-110" : "border-line",
-                  c.name === "off" && "bg-surface2",
-                )}
-                style={c.rgb ? { background: `rgb(${c.rgb.join(",")})` } : undefined}
-              >
-                {c.name === "off" && (
-                  <span className="absolute inset-0 flex items-center justify-center">
-                    <span className="block h-full w-0.5 -rotate-45 bg-danger/80" />
-                  </span>
-                )}
-              </button>
+              <Tooltip key={c.name} content={c.name}>
+                <button
+                  onClick={() => { setColorIdx(i); setUseCustom(false); }}
+                  className={cn(
+                    "relative h-9 w-9 rounded-lg border-2 transition",
+                    !useCustom && i === colorIdx ? "border-text scale-110 shadow-glow" : "border-line hover:border-line2",
+                    c.name === "off" && "bg-surface3",
+                  )}
+                  style={c.rgb ? { background: `rgb(${c.rgb.join(",")})` } : undefined}
+                >
+                  {c.name === "off" && (
+                    <span className="absolute inset-0 flex items-center justify-center">
+                      <span className="block h-full w-0.5 -rotate-45 bg-danger/80" />
+                    </span>
+                  )}
+                </button>
+              </Tooltip>
             ))}
-            <span className="ml-2 h-6 w-px bg-line" />
-            <button
-              onClick={() => { setShowPicker((v) => !v); setUseCustom(true); }}
-              title="Custom colour"
-              className={cn(
-                "h-8 w-8 rounded-md border-2 transition",
-                useCustom ? "border-text scale-110" : "border-line",
-              )}
-              style={{ background: `rgb(${customColor.join(",")})` }}
-            />
-            {showPicker && (
-              <div className="ml-2 rounded-xl border border-line bg-surface p-2">
+            <span className="mx-1 h-7 w-px bg-line" />
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  onClick={() => setUseCustom(true)}
+                  className={cn(
+                    "h-9 w-9 rounded-lg border-2 transition",
+                    useCustom ? "border-text scale-110 shadow-glow" : "border-line hover:border-line2",
+                  )}
+                  style={{ background: `rgb(${customColor.join(",")})` }}
+                />
+              </PopoverTrigger>
+              <PopoverContent className="!p-3">
                 <HexColorPicker
                   color={rgbToHex(...customColor)}
                   onChange={(hex) => {
@@ -387,165 +420,154 @@ export default function Builder() {
                     setCustomColor([(v >> 16) & 255, (v >> 8) & 255, v & 255]);
                     setUseCustom(true);
                   }}
-                  style={{ width: 200, height: 130 }}
+                  style={{ width: 220, height: 160 }}
                 />
-              </div>
-            )}
+                <div className="mt-3 text-center font-mono text-xs text-mutedFg">
+                  {rgbToHex(...customColor)}
+                </div>
+              </PopoverContent>
+            </Popover>
           </BrushRow>
 
           <BrushRow label="Gobo">
             {GOBOS.map((g, i) => (
-              <button
-                key={g.name}
-                title={g.value ?? "off"}
-                onClick={() => setGoboIdx(i)}
-                className={cn(
-                  "h-8 min-w-[2.25rem] rounded-md border-2 px-2 text-xs font-semibold transition",
-                  i === goboIdx ? "border-text bg-surface2 scale-105" : "border-line bg-bg text-muted",
-                  g.value === null && "italic",
-                )}
-              >
-                {g.name}
-              </button>
+              <Tooltip key={g.name} content={g.value ?? "off"}>
+                <button
+                  onClick={() => setGoboIdx(i)}
+                  className={cn(
+                    "h-9 min-w-[2.5rem] rounded-lg border-2 px-2 text-xs font-bold transition",
+                    i === goboIdx ? "border-text bg-tripar/20 scale-105" : "border-line bg-bg2 text-mutedFg hover:border-line2",
+                    g.value === null && "italic",
+                  )}
+                >
+                  {g.name}
+                </button>
+              </Tooltip>
             ))}
           </BrushRow>
 
           <BrushRow label="Position">
             {POSITIONS.map((p, i) => (
-              <button
-                key={p.name}
-                title={p.value ?? "off"}
-                onClick={() => setPosIdx(i)}
-                className={cn(
-                  "relative h-8 w-8 rounded-md border-2 transition",
-                  i === posIdx ? "border-text scale-110" : "border-line",
-                  "bg-surface2",
-                )}
-              >
-                {p.value !== null && (
-                  <span
-                    className="absolute h-1.5 w-1.5 rounded-full bg-accent"
-                    style={{
-                      left: `${p.dot.x * 100}%`,
-                      top:  `${p.dot.y * 100}%`,
-                      transform: "translate(-50%, -50%)",
-                    }}
-                  />
-                )}
-                {p.value === null && (
-                  <span className="absolute inset-0 flex items-center justify-center text-[10px] italic text-muted">off</span>
-                )}
-              </button>
-            ))}
-          </BrushRow>
-        </div>
-      </Section>
-
-      {/* Paint mode + group filter */}
-      <Section title="Paint mode" hint={<span>tap = single cell · draw = drag to paint many</span>}>
-        <div className="inline-flex rounded-full border border-line bg-surface2 p-1 text-xs">
-          {(["tap", "draw"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setPaintMode(m)}
-              className={cn(
-                "rounded-full px-4 py-1.5 transition",
-                paintMode === m
-                  ? "bg-accent font-semibold text-black"
-                  : "text-muted hover:text-text",
-              )}
-            >
-              {m === "tap" ? "Tap" : "Draw"}
-            </button>
-          ))}
-        </div>
-      </Section>
-
-      <Section title="Show rows">
-        <div className="flex flex-wrap gap-2">
-          {TYPE_GROUPS.map((g) => {
-            const has = fixtures.some((f) => f.type === g.type);
-            if (!has) return null;
-            const on = enabledTypes.has(g.type);
-            return (
-              <button
-                key={g.type}
-                onClick={() => setEnabledTypes((s) => {
-                  const next = new Set(s);
-                  if (on) next.delete(g.type); else next.add(g.type);
-                  return next;
-                })}
-                className={cn(
-                  "rounded-full border px-3 py-1 text-xs",
-                  on ? "border-accent bg-accent/15 text-accent" : "border-line text-muted",
-                )}
-              >
-                {g.label}
-              </button>
-            );
-          })}
-        </div>
-      </Section>
-
-      {/* Grid */}
-      <Section
-        title="Pattern"
-        hint={<span>{playingThis ? <span className="text-accent">▶ playing</span> : "tap or drag to paint"}</span>}
-      >
-        <div className="scrollbar-thin overflow-x-auto">
-          <div className="inline-block min-w-full rounded-lg border border-line bg-surface p-3">
-            {/* step header */}
-            <div className="mb-1 flex">
-              <div className="w-24" />
-              {Array.from({ length: steps }).map((_, s) => (
-                <div
-                  key={s}
+              <Tooltip key={p.name} content={p.value ?? "off"}>
+                <button
+                  onClick={() => setPosIdx(i)}
                   className={cn(
-                    "flex h-4 w-7 items-center justify-center text-[10px] tabular-nums",
-                    playCol === s ? "text-accent font-semibold" : "text-muted",
+                    "relative h-9 w-9 rounded-lg border-2 transition bg-surface3",
+                    i === posIdx ? "border-text scale-110 shadow-glow" : "border-line hover:border-line2",
                   )}
                 >
-                  {s % 4 === 0 ? s + 1 : ""}
+                  {p.value !== null ? (
+                    <span
+                      className="absolute size-1.5 rounded-full bg-accent"
+                      style={{ left: `${p.dot.x * 100}%`, top: `${p.dot.y * 100}%`, transform: "translate(-50%, -50%)" }}
+                    />
+                  ) : (
+                    <span className="absolute inset-0 flex items-center justify-center text-[10px] italic text-muted">off</span>
+                  )}
+                </button>
+              </Tooltip>
+            ))}
+          </BrushRow>
+        </CardBody>
+      </Card>
+
+      {/* Filters & paint mode */}
+      <Card>
+        <CardBody className="!pt-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <Field label="Mode" className="!gap-1">
+              <ToggleGroup value={paintMode} onValueChange={(v) => setPaintMode(v as "draw" | "tap")}>
+                <ToggleItem value="tap"><span className="flex items-center gap-1.5"><MousePointerClick className="size-3.5" /> Tap</span></ToggleItem>
+                <ToggleItem value="draw"><span className="flex items-center gap-1.5"><Hand className="size-3.5" /> Draw</span></ToggleItem>
+              </ToggleGroup>
+            </Field>
+
+            <Field label="Show rows" className="!gap-1">
+              <div className="flex flex-wrap gap-1.5">
+                {TYPE_GROUPS.map((g) => {
+                  const has = fixtures.some((f) => f.type === g.type);
+                  if (!has) return null;
+                  const on = enabledTypes.has(g.type);
+                  return (
+                    <button
+                      key={g.type}
+                      onClick={() => setEnabledTypes((s) => {
+                        const n = new Set(s);
+                        if (on) n.delete(g.type); else n.add(g.type);
+                        return n;
+                      })}
+                      className={cn(
+                        "rounded-full border px-3 py-1 text-xs transition",
+                        on ? "border-accent bg-accent/15 text-accent"
+                           : "border-line text-mutedFg hover:text-text",
+                      )}
+                    >
+                      {g.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* Grid */}
+      <Card>
+        <CardHeader
+          title="Pattern"
+          subtitle={`${(stepMs * steps / 1000).toFixed(2)}s loop · ${Object.values(tracks).flat().filter((c) => c !== null).length} cells lit`}
+          action={playingThis && <Badge tone="accent">▶ playing</Badge>}
+        />
+        <CardBody>
+          <div className="scrollbar-thin overflow-x-auto">
+            <div className="inline-block min-w-full rounded-lg border border-line bg-bg2 p-3">
+              <div className="mb-1 flex">
+                <div className="w-24" />
+                {Array.from({ length: steps }).map((_, s) => (
+                  <div
+                    key={s}
+                    className={cn(
+                      "flex h-4 w-7 items-center justify-center text-[10px] tabular-nums",
+                      playCol === s ? "text-accent font-semibold" : "text-muted",
+                    )}
+                  >
+                    {s % 4 === 0 ? s + 1 : ""}
+                  </div>
+                ))}
+              </div>
+
+              {byType.filter((g) => enabledTypes.has(g.type)).map((g) => (
+                <div key={g.type} className="mt-2">
+                  <div className="mb-1 mt-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-muted">
+                    <span className="h-px flex-1 bg-line/60" />
+                    <span>{g.label}</span>
+                    <span className="h-px flex-1 bg-line/60" />
+                  </div>
+                  {g.rows.map((row) => (
+                    <RowEl
+                      key={row.trackId}
+                      row={row}
+                      rgbDisplay={g.rgb && row.kind === "color"}
+                      cells={tracks[row.trackId] ?? []}
+                      steps={steps}
+                      playCol={playCol}
+                      onPaintStart={(s) => {
+                        dragging.current = paintMode === "draw";
+                        paint(row, s);
+                      }}
+                      onPaintEnter={(s) => {
+                        if (paintMode === "draw" && dragging.current) paint(row, s);
+                      }}
+                    />
+                  ))}
                 </div>
               ))}
             </div>
-
-            {byType.filter((g) => enabledTypes.has(g.type)).map((g) => (
-              <div key={g.type} className="mt-2">
-                <div className="mb-1 mt-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-muted">
-                  <span className="h-px flex-1 bg-line/60" />
-                  <span>{g.label}</span>
-                  <span className="h-px flex-1 bg-line/60" />
-                </div>
-                {g.rows.map((row) => (
-                  <RowEl
-                    key={row.trackId}
-                    row={row}
-                    rgbDisplay={g.rgb && row.kind === "color"}
-                    cells={tracks[row.trackId] ?? []}
-                    steps={steps}
-                    playCol={playCol}
-                    onPaintStart={(s) => {
-                      dragging.current = paintMode === "draw";
-                      paint(row, s);
-                    }}
-                    onPaintEnter={(s) => {
-                      if (paintMode === "draw" && dragging.current) paint(row, s);
-                    }}
-                  />
-                ))}
-              </div>
-            ))}
           </div>
-        </div>
-
-        <div className="mt-3 text-[11px] text-muted">
-          {(stepMs * steps / 1000).toFixed(2)}s loop ·
-          {" "}
-          {Object.values(tracks).flat().filter((c) => c !== null).length} cells lit
-        </div>
-      </Section>
-    </>
+        </CardBody>
+      </Card>
+    </div>
   );
 }
 
@@ -554,16 +576,7 @@ export default function Builder() {
 function BrushRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="w-16 text-[10px] uppercase tracking-[0.12em] text-muted">{label}</span>
-      {children}
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-[10px] uppercase tracking-[0.12em] text-muted">{label}</span>
+      <span className="w-16 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">{label}</span>
       {children}
     </div>
   );
@@ -573,7 +586,7 @@ function RowEl({
   row, rgbDisplay, cells, steps, playCol, onPaintStart, onPaintEnter,
 }: {
   row: Row;
-  rgbDisplay: boolean;          // tripar gets full colour, others get greyscale
+  rgbDisplay: boolean;
   cells: Cell[];
   steps: number;
   playCol: number;
@@ -582,15 +595,16 @@ function RowEl({
 }) {
   return (
     <div className="flex items-center">
-      <div className="w-24 truncate pr-2 text-right text-[11px] text-muted">{row.label}</div>
+      <div className="w-24 truncate pr-2 text-right text-[11px] text-mutedFg">{row.label}</div>
       {Array.from({ length: steps }).map((_, s) => {
         const c = cells[s];
         const isPlaying = playCol === s;
         const beat = s % 4 === 0;
         const fill = cellFill(row.kind, c, rgbDisplay);
         return (
-          <button
+          <motion.button
             key={s}
+            whileTap={{ scale: 0.85 }}
             onPointerDown={(e) => {
               e.preventDefault();
               (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
@@ -598,7 +612,7 @@ function RowEl({
             }}
             onPointerEnter={() => onPaintEnter(s)}
             className={cn(
-              "relative m-px h-7 w-6 rounded border touch-none",
+              "relative m-px h-7 w-6 rounded border touch-none transition-colors",
               beat ? "border-accent/40" : "border-line",
               isPlaying && "ring-2 ring-accent ring-inset",
             )}
@@ -609,7 +623,7 @@ function RowEl({
                 {fill.label}
               </span>
             )}
-          </button>
+          </motion.button>
         );
       })}
     </div>
@@ -626,16 +640,9 @@ function cellFill(kind: RowKind, c: Cell, rgbDisplay: boolean): { bg?: string; l
   }
   if (kind === "gobo") {
     const name = c as string;
-    return {
-      bg: "rgb(140, 200, 255)",
-      label: name === "open" ? "○" : name.replace(/^gobo/, ""),
-    };
+    return { bg: "rgb(140, 200, 255)", label: name === "open" ? "○" : name.replace(/^gobo/, "") };
   }
-  // pos
-  return {
-    bg: "rgb(108, 142, 255)",
-    label: posSymbol(c as string),
-  };
+  return { bg: "rgb(124, 146, 255)", label: posSymbol(c as string) };
 }
 
 function posSymbol(name: string): string {

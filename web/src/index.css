@@ -1,19 +1,38 @@
+@import url("https://rsms.me/inter/inter.css");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root { color-scheme: dark; }
-html, body { background: #0a0a0c; }
-body {
-  font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
-  -webkit-font-smoothing: antialiased;
+
+html, body, #root {
+  background: #08080a;
+  color: #f4f4f6;
+  min-height: 100vh;
 }
 
-/* Range input thumb styling lives in Tailwind utilities elsewhere; the
-   Radix Slider primitives are styled per-component. */
+html { font-family: 'Inter', sans-serif; }
+@supports (font-variation-settings: normal) {
+  html { font-family: 'InterVariable', sans-serif; }
+}
 
-/* Hide scrollbars on the step grid horizontal overflow but keep them
-   functional. */
-.scrollbar-thin::-webkit-scrollbar { height: 6px; width: 6px; }
-.scrollbar-thin::-webkit-scrollbar-thumb { background: #2a2a30; border-radius: 3px; }
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "cv11";
+}
+
+/* nice subtle scrollbars */
+.scrollbar-thin::-webkit-scrollbar { height: 8px; width: 8px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: #2a2a32; border-radius: 4px; }
+.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #3a3a42; }
 .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+
+/* hide arrows on number inputs */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] { -moz-appearance: textfield; }
