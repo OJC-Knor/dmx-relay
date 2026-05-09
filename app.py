@@ -24,7 +24,9 @@ ROOT = Path(__file__).parent
 INDEX_PATH = ROOT / "templates" / "index.html"
 EDITOR_PATH = ROOT / "templates" / "editor.html"
 VIZ_PATH = ROOT / "templates" / "viz.html"
+BUILDER_PATH = ROOT / "templates" / "builder.html"
 LAYOUT_PATH = ROOT / "state" / "layout.json"
+PATTERNS_PATH = ROOT / "state" / "patterns.json"
 
 # global state, initialized in lifespan
 _universe: Universe | None = None
@@ -211,10 +213,18 @@ def fog_off():
 
 @app.get("/scenes")
 def list_scenes():
-    return {
-        "scenes": [{"key": k, "label": label} for k, label, _ in SCENES],
-        "running": _current_scene,
-    }
+    """Built-in scenes + saved patterns.
+
+    Patterns appear as keys "pattern:<name>"; the front-end can show
+    them grouped if it cares about the prefix.
+    """
+    items = [{"key": k, "label": label, "kind": "scene"}
+             for k, label, _ in SCENES]
+    for name in sorted(_load_patterns()):
+        if name.startswith("__"):  # hide auto-saved ad-hoc patterns
+            continue
+        items.append({"key": f"pattern:{name}", "label": name, "kind": "pattern"})
+    return {"scenes": items, "running": _current_scene}
 
 
 # /scene/stop must be declared BEFORE /scene/{key},
@@ -225,12 +235,21 @@ def stop_scene():
     return {"ok": True}
 
 
-@app.post("/scene/{key}")
+@app.post("/scene/{key:path}")
 def run_scene(key: str):
-    if key not in SCENE_BY_KEY:
-        raise HTTPException(404, f"unknown scene {key!r}")
-    _spawn_scene(key)
-    return {"ok": True, "scene": key}
+    """Dispatch a scene key. Built-in scenes go to the registry; keys
+    of the form `pattern:<name>` look up a saved pattern and play it."""
+    if key in SCENE_BY_KEY:
+        _spawn_scene(key)
+        return {"ok": True, "scene": key}
+    if key.startswith("pattern:"):
+        name = key.split(":", 1)[1]
+        patterns = _load_patterns()
+        if name not in patterns:
+            raise HTTPException(404, f"pattern {name!r} not found")
+        _spawn_pattern(name, patterns[name])
+        return {"ok": True, "scene": key}
+    raise HTTPException(404, f"unknown scene {key!r}")
 
 
 # ----- master -----
@@ -326,6 +345,118 @@ def editor():
 @app.get("/viz", response_class=HTMLResponse)
 def viz():
     return VIZ_PATH.read_text()
+
+
+@app.get("/builder", response_class=HTMLResponse)
+def builder():
+    return BUILDER_PATH.read_text()
+
+
+# ----- pattern builder -----
+
+def _load_patterns() -> dict[str, dict]:
+    if PATTERNS_PATH.exists():
+        try:
+            return json.loads(PATTERNS_PATH.read_text())
+        except json.JSONDecodeError:
+            pass
+    return {}
+
+
+def _save_patterns(patterns: dict[str, dict]) -> None:
+    PATTERNS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PATTERNS_PATH.write_text(json.dumps(patterns, indent=2, sort_keys=True))
+
+
+@app.get("/api/patterns")
+def list_patterns():
+    return {"patterns": _load_patterns()}
+
+
+@app.post("/api/patterns/{name}")
+def save_pattern(name: str, pattern: dict):
+    patterns = _load_patterns()
+    patterns[name] = pattern
+    _save_patterns(patterns)
+    return {"ok": True}
+
+
+@app.delete("/api/patterns/{name}")
+def delete_pattern(name: str):
+    patterns = _load_patterns()
+    patterns.pop(name, None)
+    _save_patterns(patterns)
+    return {"ok": True}
+
+
+@app.post("/api/patterns/{name}/play")
+def play_pattern(name: str):
+    patterns = _load_patterns()
+    if name not in patterns:
+        raise HTTPException(404, f"pattern {name!r} not found")
+    _spawn_pattern(name, patterns[name])
+    return {"ok": True}
+
+
+def _spawn_pattern(name: str, pattern: dict) -> None:
+    """Run a saved pattern as a looping scene."""
+    global _scene_thread, _scene_stop, _current_scene
+    assert _rig is not None
+    _stop_current_scene()
+    _scene_stop = threading.Event()
+    stop = _scene_stop
+    rig = _rig
+
+    def run():
+        global _current_scene
+        try:
+            _play_pattern_loop(rig, stop, pattern)
+        except Exception as e:
+            print(f"[pattern-{name}] CRASHED: {e!r}")
+            traceback.print_exc()
+        finally:
+            label = f"pattern:{name}"
+            if _current_scene == label:
+                _current_scene = None
+
+    _current_scene = f"pattern:{name}"
+    _scene_thread = threading.Thread(target=run, daemon=True, name=f"pattern-{name}")
+    _scene_thread.start()
+
+
+def _play_pattern_loop(rig: Rig, stop: threading.Event, pattern: dict) -> None:
+    """Step through a tripar pattern indefinitely, one row per tripar."""
+    tracks = pattern.get("tracks", {})       # {tripar-1: [[r,g,b], ...], ...}
+    step_ms = max(20, int(pattern.get("step_ms", 200)))
+    n_steps = max((len(v) for v in tracks.values()), default=0)
+    if n_steps == 0:
+        # nothing to play; just hold dark
+        for t in rig.tripars:
+            t.off()
+        while not stop.is_set():
+            time.sleep(0.1)
+        return
+
+    for t in rig.tripars:
+        t.enable()
+
+    step = 0
+    period = step_ms / 1000.0
+    while not stop.is_set():
+        for tripar_id, colors in tracks.items():
+            try:
+                idx = int(tripar_id.split("-")[1]) - 1
+            except (ValueError, IndexError):
+                continue
+            if not (0 <= idx < len(rig.tripars)):
+                continue
+            if not colors:
+                continue
+            r, g, b = colors[step % len(colors)]
+            rig.tripars[idx].color(r, g, b)
+        if stop.wait(period):
+            return
+        step += 1
 
 
 if __name__ == "__main__":
