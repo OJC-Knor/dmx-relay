@@ -1,53 +1,37 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { HexColorPicker } from "react-colorful";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
-  CircleSlash, Cloud, Disc3, Flame, Gauge, Leaf, Music2, Palette, Power, Sparkle, Sun, Wand2, Waves, Zap, ZapOff,
+  CircleSlash, Cloud, Disc3, Flame, Gauge, Leaf,
+  Lightbulb, LightbulbOff, Music2, Power, Sparkle, Sun, Wand2, Waves, Zap, ZapOff,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { Field, Input } from "@/components/ui/Field";
+import { Field } from "@/components/ui/Field";
 import { Slider } from "@/components/ui/Slider";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover";
 import {
   atomicFlash, atomicLightning, atomicOff, atomicStrobeFast, atomicStrobeSlow,
-  blackout, fetchScenes, fogLevel, fogOff, fogPuff, playScene, setAllColor, setAllDim, stopScene,
+  blackout, fetchScenes, fogLevel, fogOff, fogPuff, playScene, spotlightOff, spotlightOn, stopScene,
 } from "@/lib/api";
 import type { SceneItem, Tempo } from "@/lib/types";
-import { cn, hexToRgb, throttle } from "@/lib/utils";
+import { useLiveState } from "@/lib/useLiveState";
+import { cn, throttle } from "@/lib/utils";
 
 const TEMPO_INFO: Record<Tempo, { label: string; sub: string; icon: any; accent: string }> = {
-  slow:    { label: "Slow",    sub: "atmospheric, ambient",    icon: Leaf,    accent: "text-[#5fd6ff]" },
-  medium:  { label: "Medium",  sub: "groove, color washes",    icon: Gauge,   accent: "text-[#7c92ff]" },
-  fast:    { label: "Fast",    sub: "energetic, dance",        icon: Flame,   accent: "text-[#ffa64d]" },
-  insane:  { label: "Insane",  sub: "peak — strobes, chaos",   icon: Sparkle, accent: "text-[#ff5070]" },
-  pattern: { label: "Patterns",sub: "your saved sequences",    icon: Music2,  accent: "text-accent" },
+  slow:    { label: "Slow",    sub: "atmospheric, ambient",  icon: Leaf,    accent: "text-[#5fd6ff]" },
+  medium:  { label: "Medium",  sub: "groove, color washes",  icon: Gauge,   accent: "text-[#7c92ff]" },
+  fast:    { label: "Fast",    sub: "energetic, dance",      icon: Flame,   accent: "text-[#ffa64d]" },
+  insane:  { label: "Insane",  sub: "peak — strobes, chaos", icon: Sparkle, accent: "text-[#ff5070]" },
+  pattern: { label: "Patterns",sub: "your saved sequences",  icon: Music2,  accent: "text-accent" },
 };
 const TEMPO_ORDER: Tempo[] = ["slow", "medium", "fast", "insane", "pattern"];
 
 export default function Controls() {
   const qc = useQueryClient();
   const scenes = useQuery({ queryKey: ["scenes"], queryFn: fetchScenes, refetchInterval: 1500 });
-
-  const [color, setColor] = useState("#ffffff");
-  const [white, setWhite] = useState(0);
-  const [dim, setDim] = useState(255);
-  const [fog, setFog] = useState(0);
-
-  const sendColor = throttle((c: string, w: number) => {
-    const { r, g, b } = hexToRgb(c);
-    setAllColor({ r, g, b, w }).catch((e) => toast.error(e.message));
-  }, 60);
-  const sendDim = throttle((d: number) => {
-    setAllDim(d).catch((e) => toast.error(e.message));
-  }, 60);
-  const sendFog = throttle((v: number) => {
-    fogLevel(v).catch((e) => toast.error(e.message));
-  }, 60);
 
   const sceneMut = useMutation({
     mutationFn: (key: string) => playScene(key),
@@ -63,154 +47,44 @@ export default function Controls() {
   const items = scenes.data?.scenes ?? [];
 
   return (
-    <div className="space-y-4">
-      {/* Hero — colour control */}
-      <Card>
-        <CardHeader
-          title={<span className="flex items-center gap-2"><Palette className="size-3" />Tripars</span>}
-          subtitle="Master colour, white channel and dimmer for all 12 Tripars"
+    <>
+      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+        {/* Main column — Scenes */}
+        <SceneGrid
+          items={items}
+          running={running}
+          onPlay={(k) => sceneMut.mutate(k)}
+          onStop={() => stopMut.mutate()}
         />
-        <CardBody>
-          <div className="flex flex-col gap-5 md:flex-row md:items-stretch">
-            {/* preview + picker popover */}
-            <div className="flex flex-1 items-center gap-4">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button
-                    className="size-24 shrink-0 rounded-2xl border border-line shadow-soft transition hover:scale-105 active:scale-100"
-                    style={{ background: color, boxShadow: `0 0 32px -4px ${color}88` }}
-                    aria-label="Pick colour"
-                  />
-                </PopoverTrigger>
-                <PopoverContent className="!p-3" align="start">
-                  <HexColorPicker
-                    color={color}
-                    onChange={(c) => { setColor(c); sendColor(c, white); }}
-                    style={{ width: 220, height: 180 }}
-                  />
-                  <div className="mt-3">
-                    <Input
-                      value={color}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setColor(v);
-                        if (/^#[0-9a-fA-F]{6}$/.test(v)) sendColor(v, white);
-                      }}
-                      className="w-full font-mono text-center"
-                    />
-                  </div>
-                </PopoverContent>
-              </Popover>
 
-              <div className="flex flex-1 flex-col gap-3">
-                <Field label="White">
-                  <div className="flex items-center gap-3">
-                    <Slider value={white} onChange={(v) => { setWhite(v); sendColor(color, v); }} />
-                    <span className="w-10 text-right text-xs tabular-nums text-mutedFg">{white}</span>
-                  </div>
-                </Field>
-                <Field label="Dimmer">
-                  <div className="flex items-center gap-3">
-                    <Slider value={dim} onChange={(v) => { setDim(v); sendDim(v); }} />
-                    <span className="w-10 text-right text-xs tabular-nums text-mutedFg">{dim}</span>
-                  </div>
-                </Field>
-              </div>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Atomic */}
-        <Card className="!bg-gradient-to-br !from-[#2a1410] !to-[#150a08] !border-[#4a2418]">
-          <CardHeader
-            title={<span className="flex items-center gap-2"><Zap className="size-3" />Atomic</span>}
-            subtitle="Strobe — fired manually, not scene-driven"
-          />
-          <CardBody>
-            <div className="grid grid-cols-2 gap-2">
-              <Tooltip content="Single short flash">
-                <Button variant="atomicFire" onClick={atomicFlash} className="col-span-2">
-                  <Zap className="size-4" /> FLASH
-                </Button>
-              </Tooltip>
-              <Button variant="atomic" onClick={atomicStrobeSlow}>
-                <Waves className="size-4" /> Slow
-              </Button>
-              <Button variant="atomic" onClick={atomicStrobeFast}>
-                <Disc3 className="size-4" /> Fast
-              </Button>
-              <Button variant="atomic" onClick={atomicLightning}>
-                <Wand2 className="size-4" /> Lightning
-              </Button>
-              <Button variant="atomic" onClick={atomicOff}>
-                <ZapOff className="size-4" /> Off
-              </Button>
-            </div>
-          </CardBody>
-        </Card>
-
-        {/* Fog */}
-        <Card className="!bg-gradient-to-br !from-[#10202c] !to-[#0a141d] !border-[#1f3548]">
-          <CardHeader
-            title={<span className="flex items-center gap-2"><Cloud className="size-3" />Fog</span>}
-            subtitle="Continuous level + a 3-second puff burst"
-          />
-          <CardBody>
-            <Field label="Level">
-              <div className="flex items-center gap-3">
-                <Slider value={fog} onChange={(v) => { setFog(v); sendFog(v); }} />
-                <span className="w-10 text-right text-xs tabular-nums text-mutedFg">{fog}</span>
-              </div>
-            </Field>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <Button
-                variant="fog"
-                onClick={() => { fogPuff().catch((e) => toast.error(e.message)); toast.success("Puff!"); }}
-              >
-                <Cloud className="size-4" /> PUFF (3s)
-              </Button>
-              <Button onClick={() => { setFog(0); fogOff(); }}>
-                <CircleSlash className="size-4" /> Off
-              </Button>
-            </div>
-          </CardBody>
-        </Card>
+        {/* Sidebar — Spotlight / Atomic / Fog */}
+        <aside className="space-y-3">
+          <SpotlightCard />
+          <AtomicCard />
+          <FogCard />
+        </aside>
       </div>
-
-      {/* Scenes — grouped by tempo */}
-      <SceneGrid
-        items={items}
-        running={running}
-        onPlay={(k) => sceneMut.mutate(k)}
-        onStop={() => stopMut.mutate()}
-      />
 
       {/* Sticky blackout dock */}
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 bg-gradient-to-t from-bg via-bg/85 to-transparent p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
         <div className="pointer-events-auto mx-auto flex max-w-[1100px] items-center gap-3">
-          <AnimatePresence>
-            {running && (
-              <motion.div
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -8 }}
-                className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-line bg-surface/85 px-3 py-2 shadow-soft backdrop-blur"
-              >
-                <span className="size-2 shrink-0 rounded-full bg-accent shadow-[0_0_10px_rgba(124,146,255,0.7)] animate-pulse" />
-                <span className="truncate text-xs text-mutedFg">
-                  Now playing — <span className="text-text">{running.replace(/^pattern:/, "♪ ")}</span>
-                </span>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {running && (
+            <motion.div
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-line bg-surface/85 px-3 py-2 shadow-soft backdrop-blur"
+            >
+              <span className="size-2 shrink-0 rounded-full bg-accent shadow-[0_0_10px_rgba(124,146,255,0.7)] animate-pulse" />
+              <span className="truncate text-xs text-mutedFg">
+                Now playing — <span className="text-text">{running.replace(/^pattern:/, "♪ ")}</span>
+              </span>
+            </motion.div>
+          )}
           <Button
             variant="danger"
             size="lg"
             onClick={() => {
               blackout();
-              setColor("#000000"); setDim(0); setFog(0);
               toast("Blackout");
             }}
             className="ml-auto min-w-[170px] flex-shrink-0"
@@ -219,11 +93,107 @@ export default function Controls() {
           </Button>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
-// ----- scene grid grouped by tempo -----
+// ----- Sidebar cards -----
+
+function SpotlightCard() {
+  const qc = useQueryClient();
+  const { state } = useLiveState();
+  const isOn = state.spotlight > 0;
+  const onMut = useMutation({ mutationFn: spotlightOn, onSuccess: () => qc.invalidateQueries({ queryKey: ["live"] }) });
+  const offMut = useMutation({ mutationFn: spotlightOff, onSuccess: () => qc.invalidateQueries({ queryKey: ["live"] }) });
+
+  return (
+    <Card className="!bg-gradient-to-br !from-[#2a2010] !to-[#1a140a] !border-[#5a4218]">
+      <CardHeader
+        title={<span className="flex items-center gap-2"><Lightbulb className="size-3" />Spotlight</span>}
+      />
+      <CardBody className="!pt-1">
+        <button
+          onClick={() => (isOn ? offMut.mutate() : onMut.mutate())}
+          className={cn(
+            "flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 transition",
+            isOn
+              ? "border-warn bg-warn/15 text-warn shadow-[0_0_24px_rgba(255,168,77,0.25)]"
+              : "border-line bg-surface2 text-mutedFg hover:text-text",
+          )}
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold">
+            {isOn ? <Lightbulb className="size-4 fill-current" /> : <LightbulbOff className="size-4" />}
+            {isOn ? "ON" : "OFF"}
+          </span>
+          <span className="text-[10px] uppercase tracking-[0.12em] opacity-70">tap to toggle</span>
+        </button>
+      </CardBody>
+    </Card>
+  );
+}
+
+function AtomicCard() {
+  return (
+    <Card className="!bg-gradient-to-br !from-[#2a1410] !to-[#150a08] !border-[#4a2418]">
+      <CardHeader
+        title={<span className="flex items-center gap-2"><Zap className="size-3" />Atomic</span>}
+      />
+      <CardBody className="!pt-1">
+        <Tooltip content="Single short flash">
+          <Button variant="atomicFire" onClick={atomicFlash} className="w-full">
+            <Zap className="size-4" /> FLASH
+          </Button>
+        </Tooltip>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <Button variant="atomic" size="sm" onClick={atomicStrobeSlow}>
+            <Waves className="size-3.5" /> Slow
+          </Button>
+          <Button variant="atomic" size="sm" onClick={atomicStrobeFast}>
+            <Disc3 className="size-3.5" /> Fast
+          </Button>
+          <Button variant="atomic" size="sm" onClick={atomicLightning}>
+            <Wand2 className="size-3.5" /> Light
+          </Button>
+          <Button variant="atomic" size="sm" onClick={atomicOff}>
+            <ZapOff className="size-3.5" /> Off
+          </Button>
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
+function FogCard() {
+  const [fog, setFog] = useState(0);
+  const sendFog = throttle((v: number) => fogLevel(v).catch((e) => toast.error(e.message)), 60);
+
+  return (
+    <Card className="!bg-gradient-to-br !from-[#10202c] !to-[#0a141d] !border-[#1f3548]">
+      <CardHeader
+        title={<span className="flex items-center gap-2"><Cloud className="size-3" />Fog</span>}
+      />
+      <CardBody className="!pt-1">
+        <Field label={<>Level <span className="ml-1 text-mutedFg/70 normal-case tracking-normal">{fog}</span></>}>
+          <Slider value={fog} onChange={(v) => { setFog(v); sendFog(v); }} />
+        </Field>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <Button
+            variant="fog"
+            size="sm"
+            onClick={() => { fogPuff().catch((e) => toast.error(e.message)); toast.success("Puff!"); }}
+          >
+            <Cloud className="size-3.5" /> PUFF (3s)
+          </Button>
+          <Button size="sm" onClick={() => { setFog(0); fogOff(); }}>
+            <CircleSlash className="size-3.5" /> Off
+          </Button>
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
+
+// ----- Scene grid grouped by tempo -----
 
 function SceneGrid({
   items, running, onPlay, onStop,
@@ -246,7 +216,7 @@ function SceneGrid({
         action={
           running && (
             <Button size="sm" variant="ghost" onClick={onStop} className="!h-8 gap-1.5">
-              <Power className="size-3.5" /> Stop scene
+              <Power className="size-3.5" /> Stop
             </Button>
           )
         }
@@ -265,7 +235,7 @@ function SceneGrid({
                 <span className="text-[11px] text-muted">{info.sub}</span>
                 <span className="ml-auto text-[10px] tabular-nums text-muted">{g.items.length}</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {g.items.map((s) => {
                   const active = running === s.key;
                   const isPattern = s.kind === "pattern";

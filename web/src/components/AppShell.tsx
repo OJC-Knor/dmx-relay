@@ -1,13 +1,12 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
-  Activity, AudioLines, Layers, LayoutGrid, Lightbulb, Sparkles, Wifi, WifiOff,
+  Activity, AudioLines, Layers, LayoutGrid, Sparkles, Wifi, WifiOff,
 } from "lucide-react";
 
-import { fetchScenes, spotlightToggle } from "@/lib/api";
+import { fetchScenes } from "@/lib/api";
 import { useLiveState } from "@/lib/useLiveState";
-import { Tooltip } from "@/components/ui/Tooltip";
 import { cn } from "@/lib/utils";
 
 const tabs = [
@@ -19,15 +18,9 @@ const tabs = [
 
 export default function AppShell() {
   const loc = useLocation();
-  const qc = useQueryClient();
   const scenes = useQuery({ queryKey: ["scenes"], queryFn: fetchScenes, refetchInterval: 1500 });
-  const { state, connected } = useLiveState();
+  const { connected } = useLiveState();
   const running = scenes.data?.running ?? null;
-  const spotlightOn = state.spotlight > 0;
-  const toggleMut = useMutation({
-    mutationFn: spotlightToggle,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["live"] }),
-  });
 
   return (
     <div className="min-h-screen bg-bg">
@@ -72,22 +65,6 @@ export default function AppShell() {
               );
             })}
           </nav>
-
-          <Tooltip content={spotlightOn ? "Spotlight on — click to turn off" : "Spotlight off — click to turn on"}>
-            <button
-              onClick={() => toggleMut.mutate()}
-              aria-label="Toggle spotlight"
-              className={cn(
-                "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition",
-                spotlightOn
-                  ? "border-warn bg-warn/15 text-warn shadow-[0_0_18px_rgba(255,168,77,0.35)]"
-                  : "border-line bg-surface2 text-mutedFg hover:text-text",
-              )}
-            >
-              <Lightbulb className={cn("size-3.5", spotlightOn && "fill-current")} strokeWidth={2.25} />
-              <span className="hidden sm:inline">Spot</span>
-            </button>
-          </Tooltip>
 
           <StatusPill running={running} connected={connected} />
         </div>
