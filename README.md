@@ -17,7 +17,9 @@ Tech) using the OpenDMX raw protocol.
 | Fog                         | 1  | 500         | `Fog` |
 
 Full patch + per-fixture notes in [`docs/fixtures.md`](docs/fixtures.md).
-Manufacturer manuals in [`manuals/`](manuals/).
+Manufacturer manuals are not in the repo (they're copyrighted PDFs).
+Drop them locally into `manuals/` if you want them on hand — that path
+is gitignored.
 
 ## Setup
 
@@ -120,7 +122,7 @@ uv run python tools/interactive.py
 ├── tests/            hardware smoke tests
 ├── tools/            interactive channel poker
 ├── docs/             patch table, screenshots
-├── manuals/          PDF fixture manuals
+├── manuals/          (gitignored — drop fixture PDFs here locally)
 ├── state/            layout.json (tracked) + patterns.json (gitignored, user content)
 ├── web/              React + Vite + Tailwind front-end
 │   ├── src/pages/    Controls, Builder, Viz, Editor

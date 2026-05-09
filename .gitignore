@@ -16,3 +16,6 @@ web/dist
 web/*.tsbuildinfo
 web/vite.config.d.ts
 web/vite.config.js
+
+# manufacturer PDFs are copyrighted; keep them local only
+/manuals/
