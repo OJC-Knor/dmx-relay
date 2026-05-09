@@ -130,6 +130,7 @@ export default function Builder() {
   const [enabledTypes, setEnabledTypes] = useState<Set<string>>(
     () => new Set(["tripar", "pinspot", "spotlight", "atomic", "focus", "groot", "fog"]),
   );
+  const [paintMode, setPaintMode] = useState<"draw" | "tap">("draw");
 
   // initialise tracks once we know the rows
   useEffect(() => {
@@ -440,7 +441,26 @@ export default function Builder() {
         </div>
       </Section>
 
-      {/* Group filter */}
+      {/* Paint mode + group filter */}
+      <Section title="Paint mode" hint={<span>tap = single cell · draw = drag to paint many</span>}>
+        <div className="inline-flex rounded-full border border-line bg-surface2 p-1 text-xs">
+          {(["tap", "draw"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setPaintMode(m)}
+              className={cn(
+                "rounded-full px-4 py-1.5 transition",
+                paintMode === m
+                  ? "bg-accent font-semibold text-black"
+                  : "text-muted hover:text-text",
+              )}
+            >
+              {m === "tap" ? "Tap" : "Draw"}
+            </button>
+          ))}
+        </div>
+      </Section>
+
       <Section title="Show rows">
         <div className="flex flex-wrap gap-2">
           {TYPE_GROUPS.map((g) => {
@@ -505,8 +525,13 @@ export default function Builder() {
                     cells={tracks[row.trackId] ?? []}
                     steps={steps}
                     playCol={playCol}
-                    onPaintStart={(s) => { dragging.current = true; paint(row, s); }}
-                    onPaintEnter={(s) => { if (dragging.current) paint(row, s); }}
+                    onPaintStart={(s) => {
+                      dragging.current = paintMode === "draw";
+                      paint(row, s);
+                    }}
+                    onPaintEnter={(s) => {
+                      if (paintMode === "draw" && dragging.current) paint(row, s);
+                    }}
                   />
                 ))}
               </div>
