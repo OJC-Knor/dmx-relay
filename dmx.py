@@ -36,6 +36,7 @@ class Universe:
         self._thread: threading.Thread | None = None
         self._ser: serial.Serial | None = None
         self._error: BaseException | None = None
+        self._smooth_fixtures: list = []   # fixtures with a _smooth_step(dt) hook
 
     # ----- lifecycle -----
 
@@ -93,6 +94,8 @@ class Universe:
     def add(self, *fixtures: "Fixture") -> None:
         for f in fixtures:
             f.attach(self)
+            if hasattr(f, "_smooth_step"):
+                self._smooth_fixtures.append(f)
 
     # ----- internals -----
 
@@ -100,6 +103,12 @@ class Universe:
         next_tick = time.monotonic()
         try:
             while not self._stop.is_set():
+                # advance any fixture-level smoothing (e.g. Pinspot ease-in/out)
+                for f in self._smooth_fixtures:
+                    try:
+                        f._smooth_step(self.period)
+                    except Exception:
+                        pass
                 if not self.mock:
                     with self._lock:
                         snapshot = bytes(self._channels)

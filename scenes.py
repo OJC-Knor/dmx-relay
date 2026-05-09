@@ -18,8 +18,9 @@ import time
 from typing import Callable, Literal
 
 from layout import head_order_lr, tripar_groups
+from rig import Rig
 
-Scene = Callable[..., None]
+Scene = Callable[[Rig, threading.Event], None]
 Tempo = Literal["slow", "medium", "fast", "insane"]
 
 # ----- helpers -----
@@ -52,7 +53,9 @@ def _ensure_visible(tripars, focus, groot) -> None:
 
 # ----- scenes -----
 
-def scene_atmosphere(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_atmosphere(rig: Rig, stop: threading.Event) -> None:
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus:
         h._set("pan_tilt_speed", 220)
@@ -82,7 +85,9 @@ def scene_atmosphere(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_sunrise(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_sunrise(rig: Rig, stop: threading.Event) -> None:
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.dim(180)
@@ -106,7 +111,9 @@ def scene_sunrise(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_chase(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_chase(rig: Rig, stop: threading.Event) -> None:
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.color("blue")
@@ -132,7 +139,9 @@ def scene_chase(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 60)
 
 
-def scene_rainbow(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_rainbow(rig: Rig, stop: threading.Event) -> None:
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.dim(255)
@@ -164,8 +173,10 @@ def scene_rainbow(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_buildup(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_buildup(rig: Rig, stop: threading.Event) -> None:
     """Cyclic energy ramp: builds up over 15s then resets, on repeat."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.dim(255)
@@ -191,7 +202,9 @@ def scene_buildup(tripars, focus, groot, stop: threading.Event) -> None:
             time.sleep(1 / 40)
 
 
-def scene_drop(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_drop(rig: Rig, stop: threading.Event) -> None:
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.color("white")
@@ -203,6 +216,9 @@ def scene_drop(tripars, focus, groot, stop: threading.Event) -> None:
         v = int(127 + 128 * math.sin(t_now * 6))
         for t in tripars:
             t.color(v, v, v)
+        # pinspots track the same pulse
+        for p in pinspots:
+            p.dim(v)
         pan = int(128 + 100 * math.sin(t_now * 1.2))
         tilt = int(128 + 60 * math.cos(t_now * 1.7))
         for h in focus + groot:
@@ -210,7 +226,9 @@ def scene_drop(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 40)
 
 
-def scene_calm(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_calm(rig: Rig, stop: threading.Event) -> None:
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus:
         h.shutter("open")
@@ -238,7 +256,9 @@ def scene_calm(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_disco(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_disco(rig: Rig, stop: threading.Event) -> None:
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     gobos = ["gobo1", "gobo2", "gobo3", "gobo4"]
     for h, g in zip(focus, gobos):
@@ -275,8 +295,12 @@ def scene_disco(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_climax(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_climax(rig: Rig, stop: threading.Event) -> None:
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
+    for p in pinspots:
+        p.dim(255)
     for h in focus + groot:
         h.shutter("strobe")
         h.dim(255)
@@ -301,8 +325,10 @@ def scene_climax(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 40)
 
 
-def scene_fade(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_fade(rig: Rig, stop: threading.Event) -> None:
     """Fade to black, then hold dark until interrupted."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
 
     fade_secs = 6.0
@@ -327,9 +353,11 @@ def scene_fade(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(0.1)
 
 
-def scene_beam_sweep(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_beam_sweep(rig: Rig, stop: threading.Event) -> None:
     """Beam sweep — each head runs the cycle horizontal -> on -> tilt down ->
     off -> return on its own staggered phase, so it looks like a wave."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for t in tripars:
         t.color(40, 20, 60)  # soft purple backdrop
@@ -375,8 +403,10 @@ def scene_beam_sweep(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 40)
 
 
-def scene_police(tripars, focus, groot, stop: threading.Event) -> None:
-    """Red/blue alternating flash — tripars and heads in sync."""
+def scene_police(rig: Rig, stop: threading.Event) -> None:
+    """Red/blue alternating flash. Pinspots strobe with the beat, spotlight chops."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.dim(255)
@@ -394,12 +424,17 @@ def scene_police(tripars, focus, groot, stop: threading.Event) -> None:
                 t.color(*(color if (i % 2) == state else (0, 0, 0)))
             for h in focus + groot:
                 h.color(head_color)
+            # alternate pinspots between the two halves
+            for i, p in enumerate(pinspots):
+                p.dim(255 if (i % 2) == state else 0)
             last = time.time()
         time.sleep(1 / 60)
 
 
-def scene_fire(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_fire(rig: Rig, stop: threading.Event) -> None:
     """Flickering warm reds/oranges on tripars; heads slowly drift."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.color("red")
@@ -418,8 +453,10 @@ def scene_fire(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(0.06)
 
 
-def scene_ocean(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_ocean(rig: Rig, stop: threading.Event) -> None:
     """Blue/teal waves on tripars; heads drift slowly."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus:
         h.color("blue"); h.dim(150); h.gobo("open")
@@ -440,8 +477,10 @@ def scene_ocean(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_sunset(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_sunset(rig: Rig, stop: threading.Event) -> None:
     """Slow drift through warm to cool palette, looping."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.dim(180)
@@ -472,8 +511,10 @@ def scene_sunset(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_wipe(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_wipe(rig: Rig, stop: threading.Event) -> None:
     """Color wipes across the tripars left-right-left-right..."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.dim(200)
@@ -507,8 +548,10 @@ def scene_wipe(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 60)
 
 
-def scene_stars(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_stars(rig: Rig, stop: threading.Event) -> None:
     """Random twinkles — random tripars flash white briefly on a deep blue bed."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus:
         h.color("blue"); h.dim(80); h.gobo("open")
@@ -533,8 +576,10 @@ def scene_stars(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_evenodd(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_evenodd(rig: Rig, stop: threading.Event) -> None:
     """Even/odd Tripars hold contrasting colors; swap periodically."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.dim(220)
@@ -568,9 +613,11 @@ def scene_evenodd(tripars, focus, groot, stop: threading.Event) -> None:
 
 # ----- geometry-aware scenes (use saved layout) -----
 
-def scene_ring_spin(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_ring_spin(rig: Rig, stop: threading.Event) -> None:
     """A bright dot rotates clockwise around the ring of 8 tripars
     around the crowd. Stage row holds a soft warm backdrop."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     ring, stage = tripar_groups()
     bg = (8, 4, 25)
@@ -603,9 +650,11 @@ def scene_ring_spin(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 60)
 
 
-def scene_radial_wave(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_radial_wave(rig: Rig, stop: threading.Event) -> None:
     """Color wave around the ring — each ring tripar phase-offset.
     Stage tripars sync to the dominant hue."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     ring, stage = tripar_groups()
     for h in focus + groot:
@@ -629,9 +678,11 @@ def scene_radial_wave(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_stage_chase(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_stage_chase(rig: Rig, stop: threading.Event) -> None:
     """Energetic chase along the stage row (T9-12 + 3 Groots).
     Ring stays in a calm color. Groot heads pan side to side."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     ring, stage = tripar_groups()
     g_order = head_order_lr("groot", len(groot))
@@ -686,12 +737,16 @@ def scene_stage_chase(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 60)
 
 
-def scene_crowd_glow(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_crowd_glow(rig: Rig, stop: threading.Event) -> None:
     """Atmospheric: Focus Spots aimed up over the crowd in white,
     ring tripars in a slow warm wash, stage off. No strobing."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     ring, stage = tripar_groups()
 
+    for p in pinspots:
+        p.dim(180)  # pinspots glow warm on the crowd
     for h in focus:
         h.color("white")
         h.dim(180)
@@ -706,9 +761,8 @@ def scene_crowd_glow(tripars, focus, groot, stop: threading.Event) -> None:
 
     while not stop.is_set():
         t_now = time.time()
-        # warm wash on the ring, slow pulse
-        v = 0.6 + 0.3 * (math.sin(t_now * 0.3) + 1) / 2  # 0.6..0.9
-        col = hsv(0.06, s=0.8, v=v)  # warm orange-ish
+        v = 0.6 + 0.3 * (math.sin(t_now * 0.3) + 1) / 2
+        col = hsv(0.06, s=0.8, v=v)
         for k, idx in enumerate(ring):
             shimmer = 1.0 + 0.05 * math.sin(t_now * 0.4 + k)
             tripars[idx].color(
@@ -716,16 +770,21 @@ def scene_crowd_glow(tripars, focus, groot, stop: threading.Event) -> None:
                 min(255, int(col[1] * shimmer)),
                 min(255, int(col[2] * shimmer)),
             )
-        # heads breathe in dimmer
+        # pinspots breathe along
+        pin_v = 140 + int(40 * math.sin(t_now * 0.4))
+        for p in pinspots:
+            p.dim(pin_v)
         d = 140 + int(40 * math.sin(t_now * 0.4))
         for h in focus:
             h.dim(d)
         time.sleep(1 / 30)
 
 
-def scene_ring_quadrants(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_ring_quadrants(rig: Rig, stop: threading.Event) -> None:
     """Split the 8-ring into 4 pairs (quadrants); each holds a different
     color, all four colors rotate around the ring every beat."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     ring, stage = tripar_groups()
     for h in focus + groot:
@@ -760,13 +819,16 @@ def scene_ring_quadrants(tripars, focus, groot, stop: threading.Event) -> None:
 
 # ---------- SLOW (atmospheric) ----------
 
-def scene_breathe(tripars, focus, groot, stop: threading.Event) -> None:
-    """Single warm hue breathing in and out, very slow. Heads still."""
+def scene_breathe(rig: Rig, stop: threading.Event) -> None:
+    """Single warm hue breathing in and out, very slow. Heads still.
+    Pinspots breathe along with the tripars at low intensity."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.color("white")
         h.dim(120)
-        h.position(128, 110)  # slightly up
+        h.position(128, 110)
         try:
             h._set("pan_tilt_speed", 240)
         except (KeyError, ValueError):
@@ -778,18 +840,22 @@ def scene_breathe(tripars, focus, groot, stop: threading.Event) -> None:
 
     while not stop.is_set():
         t_now = time.time()
-        # Hue drifts slowly through warm range (orange - peach - pink)
         h_drift = 0.05 + 0.05 * math.sin(t_now * 0.04)
-        # Breath cycle ~7s
         breath = 0.35 + 0.30 * (1 + math.sin(t_now * 0.9)) / 2
         col = hsv(h_drift, s=0.65, v=breath)
         for t in tripars:
             t.color(*col)
+        # pinspots track the breath at ~40% peak
+        pin_level = int(100 * breath)
+        for p in pinspots:
+            p.dim(pin_level)
         time.sleep(1 / 30)
 
 
-def scene_drift(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_drift(rig: Rig, stop: threading.Event) -> None:
     """Slow blue/purple/teal drift, ring tripars phase-offset, heads sway."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     ring, stage = tripar_groups()
     for h in focus + groot:
@@ -831,13 +897,16 @@ def scene_drift(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_ember(tripars, focus, groot, stop: threading.Event) -> None:
-    """Warm flickering on the tripars, like coals. Heads dim red, pointing down."""
+def scene_ember(rig: Rig, stop: threading.Event) -> None:
+    """Warm flickering on the tripars, like coals. Heads dim red, pointing down.
+    Pinspots flicker dim warm too."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.color("red")
         h.dim(70)
-        h.position(128, 200)  # tilt down
+        h.position(128, 200)
 
     next_flicker = 0.0
     last_pop = 0.0
@@ -845,17 +914,20 @@ def scene_ember(tripars, focus, groot, stop: threading.Event) -> None:
         t_now = time.time()
         if t_now >= next_flicker:
             for t in tripars:
-                # mostly low warm reds
                 base = random.randint(80, 160)
                 r = base + random.randint(0, 60)
                 g = random.randint(8, 30)
-                # ember pop
                 if random.random() < 0.04:
                     r = random.randint(220, 255)
                     g = random.randint(40, 90)
                 t.color(min(255, r), g, 0)
+            # pinspots flicker more subtly
+            for p in pinspots:
+                level = random.randint(20, 80)
+                if random.random() < 0.05:
+                    level = random.randint(150, 200)
+                p.dim(level)
             next_flicker = t_now + random.uniform(0.10, 0.25)
-        # heads occasional very subtle drift
         if t_now - last_pop > 6:
             for h in focus + groot:
                 h.dim(60 + random.randint(0, 30))
@@ -865,8 +937,11 @@ def scene_ember(tripars, focus, groot, stop: threading.Event) -> None:
 
 # ---------- MEDIUM (groove) ----------
 
-def scene_groove(tripars, focus, groot, stop: threading.Event) -> None:
-    """2 Hz pulse on tripars, palette changes every 4s, heads gentle sway."""
+def scene_groove(rig: Rig, stop: threading.Event) -> None:
+    """2 Hz pulse on tripars, palette changes every 4s, heads gentle sway.
+    Pinspots punch on every beat. Spotlight pulses every other beat."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.color("white")
@@ -878,16 +953,24 @@ def scene_groove(tripars, focus, groot, stop: threading.Event) -> None:
     ]
     pi = 0
     last_change = time.time()
+    last_beat = -1
 
     while not stop.is_set():
         t_now = time.time()
-        # 2 Hz strong pulse with quick attack, slow decay
         beat_phase = (t_now * 2) % 1.0
-        pulse = max(0.25, 1.0 - beat_phase * 0.85)  # 1 -> 0.15 over the beat
+        pulse = max(0.25, 1.0 - beat_phase * 0.85)
         c = palette[pi]
         col = (int(c[0] * pulse), int(c[1] * pulse), int(c[2] * pulse))
         for t in tripars:
             t.color(*col)
+
+        # pinspots: full attack on the beat, decay
+        for p in pinspots:
+            p.dim(int(255 * pulse))
+        # spotlight: every second beat
+        beat_idx = int(t_now * 2)
+        if beat_idx != last_beat:
+            last_beat = beat_idx
 
         if t_now - last_change > 4.0:
             pi = (pi + 1) % len(palette)
@@ -900,8 +983,10 @@ def scene_groove(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 40)
 
 
-def scene_pinwheel(tripars, focus, groot, stop: threading.Event) -> None:
+def scene_pinwheel(rig: Rig, stop: threading.Event) -> None:
     """4 colour quadrants rotate around the ring at moderate speed."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     ring, stage = tripar_groups()
     for h in focus + groot:
@@ -931,9 +1016,14 @@ def scene_pinwheel(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
-def scene_lighthouse(tripars, focus, groot, stop: threading.Event) -> None:
-    """All heads sweep left-right in unison at moderate speed; backdrop hue rotates."""
+def scene_lighthouse(rig: Rig, stop: threading.Event) -> None:
+    """All heads sweep left-right in unison; backdrop hue rotates.
+    Spotlight stays on as a steady anchor; pinspots stay at half."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
+    for p in pinspots:
+        p.dim(120)
     for h in focus + groot:
         h.dim(255)
         h.color("yellow")
@@ -948,12 +1038,10 @@ def scene_lighthouse(tripars, focus, groot, stop: threading.Event) -> None:
 
     while not stop.is_set():
         t_now = time.time()
-        # ~0.5 Hz sweep
         pan = int(128 + 110 * math.sin(t_now * math.pi))
-        tilt = 90  # angled up toward crowd
+        tilt = 90
         for h in focus + groot:
             h.position(pan, tilt)
-        # backdrop on tripars: slow hue rotation
         col = hsv((t_now * 0.05) % 1.0, s=0.55, v=0.45)
         for t in tripars:
             t.color(*col)
@@ -962,8 +1050,11 @@ def scene_lighthouse(tripars, focus, groot, stop: threading.Event) -> None:
 
 # ---------- FAST (energetic) ----------
 
-def scene_chase_storm(tripars, focus, groot, stop: threading.Event) -> None:
-    """4 colour 'comets' with trailing fade chasing around the ring."""
+def scene_chase_storm(rig: Rig, stop: threading.Event) -> None:
+    """4 colour 'comets' with trailing fade chasing around the ring.
+    Pinspots strobe in time with the chase head passing 'in front of' them."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     ring, stage = tripar_groups()
     for h in focus + groot:
@@ -1006,6 +1097,17 @@ def scene_chase_storm(tripars, focus, groot, stop: threading.Event) -> None:
         for idx in stage:
             tripars[idx].color(*bg)
 
+        # pinspots: each one fires when ANY chase head is over its "phase angle"
+        # we have N pinspots distributed evenly across the cycle
+        for pi, p in enumerate(pinspots):
+            phase = (pi / max(1, len(pinspots))) * n
+            min_dist = min(
+                min(abs(((chase_pos + frac * n) % n) - phase),
+                    n - abs(((chase_pos + frac * n) % n) - phase))
+                for frac in (0.0, 0.25, 0.5, 0.75)
+            )
+            p.dim(255 if min_dist < 0.6 else 0)
+
         # heads sweep with the chase
         pan = int(128 + 90 * math.sin(now * 0.9))
         tilt = int(128 + 40 * math.cos(now * 1.3))
@@ -1014,8 +1116,11 @@ def scene_chase_storm(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 60)
 
 
-def scene_strobe_rain(tripars, focus, groot, stop: threading.Event) -> None:
-    """Random fast strobes per tripar — feels like rain. Heads strobe + sweep."""
+def scene_strobe_rain(rig: Rig, stop: threading.Event) -> None:
+    """Random fast strobes per tripar — feels like rain. Heads strobe + sweep.
+    Pinspots also strobe randomly; spotlight flashes occasionally."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.color("white")
@@ -1023,14 +1128,11 @@ def scene_strobe_rain(tripars, focus, groot, stop: threading.Event) -> None:
         h.shutter("strobe")
 
     on_frames = [0] * len(tripars)
+    pin_frames = [0] * len(pinspots)
     cur_color: list[tuple[int, int, int]] = [(0, 0, 0)] * len(tripars)
     palette = [
-        (255, 255, 255),
-        (255, 110, 200),
-        (110, 200, 255),
-        (255, 200, 110),
-        (200, 110, 255),
-        (110, 255, 200),
+        (255, 255, 255), (255, 110, 200), (110, 200, 255),
+        (255, 200, 110), (200, 110, 255), (110, 255, 200),
     ]
 
     while not stop.is_set():
@@ -1045,7 +1147,18 @@ def scene_strobe_rain(tripars, focus, groot, stop: threading.Event) -> None:
                     cur_color[i] = random.choice(palette)
                 else:
                     t.color(0, 0, 0)
-        # heads pan/tilt rapidly
+        # pinspots strobe at their own slower random rate
+        for i, p in enumerate(pinspots):
+            if pin_frames[i] > 0:
+                pin_frames[i] -= 1
+                p.dim(255)
+            else:
+                if random.random() < 0.15:
+                    pin_frames[i] = random.randint(1, 2)
+                else:
+                    p.dim(0)
+        # spotlight: occasional pop
+
         pan = int(128 + 100 * math.sin(t_now * 1.6))
         tilt = int(128 + 60 * math.cos(t_now * 2.1))
         for h in focus + groot:
@@ -1055,8 +1168,10 @@ def scene_strobe_rain(tripars, focus, groot, stop: threading.Event) -> None:
 
 # ---------- INSANE (peak) ----------
 
-def scene_glitch(tripars, focus, groot, stop: threading.Event) -> None:
-    """Chaotic — full rig randomised every 60-150 ms."""
+def scene_glitch(rig: Rig, stop: threading.Event) -> None:
+    """Chaotic — full rig randomised every 60-150 ms. Pinspots and spotlight too."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.dim(255)
@@ -1070,11 +1185,7 @@ def scene_glitch(tripars, focus, groot, stop: threading.Event) -> None:
         if t_now >= next_change:
             for t in tripars:
                 if random.random() < 0.78:
-                    t.color(
-                        random.randint(0, 255),
-                        random.randint(0, 255),
-                        random.randint(0, 255),
-                    )
+                    t.color(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
                 else:
                     t.color(0, 0, 0)
             for h in focus + groot:
@@ -1083,12 +1194,17 @@ def scene_glitch(tripars, focus, groot, stop: threading.Event) -> None:
                     h.color(random.choice(head_colors))
                 except ValueError:
                     pass
+            for p in pinspots:
+                p.dim(random.choice([0, 0, 255, random.randint(60, 200)]))
             next_change = t_now + random.uniform(0.06, 0.15)
         time.sleep(1 / 60)
 
 
-def scene_supernova(tripars, focus, groot, stop: threading.Event) -> None:
-    """Repeating explosion — stage front pops first, ring ignites, then flash, then cool."""
+def scene_supernova(rig: Rig, stop: threading.Event) -> None:
+    """Repeating explosion — stage front pops first, ring ignites, then flash, then cool.
+    Pinspots and spotlight time with the phases."""
+    tripars, focus, groot = rig.tripars, rig.focus, rig.groot
+    pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     ring, stage = tripar_groups()
     cycle = 1.4
@@ -1098,38 +1214,46 @@ def scene_supernova(tripars, focus, groot, stop: threading.Event) -> None:
 
     while not stop.is_set():
         t_now = time.time()
-        p = (t_now % cycle) / cycle  # 0..1
+        p = (t_now % cycle) / cycle
 
         if p < 0.10:
-            # gathering — dim purple
+            # gathering — dim purple, everything off
             for t in tripars:
                 t.color(20, 0, 40)
             for h in focus + groot:
                 h.dim(80)
                 h.shutter("open")
+            for pin in pinspots:
+                pin.dim(0)
         elif p < 0.30:
-            # stage explodes outward — bright cyan
+            # stage explodes — pinspots brighten
             f = (p - 0.10) / 0.20
             v = int(255 * f)
             for idx in stage:
                 tripars[idx].color(0, v, v)
             for idx in ring:
                 tripars[idx].color(20, 0, 40)
+            for pin in pinspots:
+                pin.dim(v)
         elif p < 0.50:
-            # ring ignites — magenta
+            # ring ignites — pinspots pop full
             f = (p - 0.30) / 0.20
             v = int(255 * f)
             for idx in stage:
                 tripars[idx].color(0, 200, 220)
             for idx in ring:
                 tripars[idx].color(v, 80, int(v * 0.9))
+            for pin in pinspots:
+                pin.dim(255)
         elif p < 0.80:
-            # peak — everything strobing white-magenta with fast head sweeps
+            # peak — strobing chaos, spotlight ON
             for h in focus + groot:
                 h.shutter("strobe")
                 h.dim(255)
             for t in tripars:
                 t.color(255, 200, 255)
+            for pin in pinspots:
+                pin.dim(255)
             pan = int(128 + 110 * math.sin(t_now * 5))
             tilt = int(128 + 60 * math.cos(t_now * 4))
             for h in focus + groot:
@@ -1142,6 +1266,8 @@ def scene_supernova(tripars, focus, groot, stop: threading.Event) -> None:
             v = int(180 * f)
             for t in tripars:
                 t.color(v, int(v * 0.4), v)
+            for pin in pinspots:
+                pin.dim(int(255 * f))
         time.sleep(1 / 60)
 
 

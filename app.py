@@ -89,7 +89,7 @@ def _spawn_scene(key: str) -> None:
     def run():
         global _current_scene
         try:
-            fn(_rig.tripars, _rig.focus, _rig.groot, stop)
+            fn(_rig, stop)
         except Exception as e:
             print(f"[scene-{key}] CRASHED: {e!r}")
             traceback.print_exc()
@@ -205,6 +205,32 @@ def fog_puff():
 def fog_off():
     assert _rig is not None
     _rig.fog.output(0)
+    return {"ok": True}
+
+
+# ----- spotlight -----
+
+@app.post("/spotlight/on")
+def spotlight_on():
+    assert _rig is not None
+    _rig.spotlight.on()
+    return {"ok": True}
+
+
+@app.post("/spotlight/off")
+def spotlight_off():
+    assert _rig is not None
+    _rig.spotlight.off()
+    return {"ok": True}
+
+
+@app.post("/spotlight/toggle")
+def spotlight_toggle():
+    assert _rig is not None
+    if _rig.spotlight.state["level"] > 0:
+        _rig.spotlight.off()
+    else:
+        _rig.spotlight.on()
     return {"ok": True}
 
 

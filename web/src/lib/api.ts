@@ -62,6 +62,12 @@ export const fogLevel = (level: number) => post("/fog/level", { level });
 export const fogPuff  = () => post("/fog/puff");
 export const fogOff   = () => post("/fog/off");
 
+// --- spotlight ---
+
+export const spotlightOn     = () => post("/spotlight/on");
+export const spotlightOff    = () => post("/spotlight/off");
+export const spotlightToggle = () => post("/spotlight/toggle");
+
 // --- master ---
 
 export const blackout = () => post("/blackout");
