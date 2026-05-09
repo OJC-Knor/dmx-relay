@@ -15,11 +15,12 @@ import math
 import random
 import threading
 import time
-from typing import Callable
+from typing import Callable, Literal
 
 from layout import head_order_lr, tripar_groups
 
 Scene = Callable[..., None]
+Tempo = Literal["slow", "medium", "fast", "insane"]
 
 # ----- helpers -----
 
@@ -753,36 +754,433 @@ def scene_ring_quadrants(tripars, focus, groot, stop: threading.Event) -> None:
         time.sleep(1 / 30)
 
 
+# ====================================================================
+# NEW TEMPO-CURATED SCENES
+# ====================================================================
+
+# ---------- SLOW (atmospheric) ----------
+
+def scene_breathe(tripars, focus, groot, stop: threading.Event) -> None:
+    """Single warm hue breathing in and out, very slow. Heads still."""
+    _ensure_visible(tripars, focus, groot)
+    for h in focus + groot:
+        h.color("white")
+        h.dim(120)
+        h.position(128, 110)  # slightly up
+        try:
+            h._set("pan_tilt_speed", 240)
+        except (KeyError, ValueError):
+            pass
+        try:
+            h._set("speed", 240)
+        except (KeyError, ValueError):
+            pass
+
+    while not stop.is_set():
+        t_now = time.time()
+        # Hue drifts slowly through warm range (orange - peach - pink)
+        h_drift = 0.05 + 0.05 * math.sin(t_now * 0.04)
+        # Breath cycle ~7s
+        breath = 0.35 + 0.30 * (1 + math.sin(t_now * 0.9)) / 2
+        col = hsv(h_drift, s=0.65, v=breath)
+        for t in tripars:
+            t.color(*col)
+        time.sleep(1 / 30)
+
+
+def scene_drift(tripars, focus, groot, stop: threading.Event) -> None:
+    """Slow blue/purple/teal drift, ring tripars phase-offset, heads sway."""
+    _ensure_visible(tripars, focus, groot)
+    ring, stage = tripar_groups()
+    for h in focus + groot:
+        h.color("blue")
+        h.dim(140)
+        try:
+            h._set("pan_tilt_speed", 230)
+        except (KeyError, ValueError):
+            pass
+        try:
+            h._set("speed", 230)
+        except (KeyError, ValueError):
+            pass
+
+    palette_hsv = [(0.55, 1.00), (0.65, 0.90), (0.72, 0.85), (0.50, 1.00), (0.46, 0.95)]
+
+    while not stop.is_set():
+        t_now = time.time()
+        phase = (t_now * 0.025) % 1.0
+        seg = phase * len(palette_hsv)
+        i0 = int(seg) % len(palette_hsv)
+        i1 = (i0 + 1) % len(palette_hsv)
+        f = seg - int(seg)
+        h0, s0 = palette_hsv[i0]
+        h1, s1 = palette_hsv[i1]
+        base_h = h0 + (h1 - h0) * f
+        base_s = s0 + (s1 - s0) * f
+
+        for k, idx in enumerate(ring):
+            offset = math.sin(t_now * 0.25 + k * 0.6) * 0.04
+            tripars[idx].color(*hsv(base_h + offset, s=base_s, v=0.55))
+        for idx in stage:
+            tripars[idx].color(*hsv(base_h, s=base_s, v=0.40))
+
+        pan = int(128 + 25 * math.sin(t_now * 0.15))
+        tilt = int(128 + 18 * math.cos(t_now * 0.10))
+        for h in focus + groot:
+            h.position(pan, tilt)
+        time.sleep(1 / 30)
+
+
+def scene_ember(tripars, focus, groot, stop: threading.Event) -> None:
+    """Warm flickering on the tripars, like coals. Heads dim red, pointing down."""
+    _ensure_visible(tripars, focus, groot)
+    for h in focus + groot:
+        h.color("red")
+        h.dim(70)
+        h.position(128, 200)  # tilt down
+
+    next_flicker = 0.0
+    last_pop = 0.0
+    while not stop.is_set():
+        t_now = time.time()
+        if t_now >= next_flicker:
+            for t in tripars:
+                # mostly low warm reds
+                base = random.randint(80, 160)
+                r = base + random.randint(0, 60)
+                g = random.randint(8, 30)
+                # ember pop
+                if random.random() < 0.04:
+                    r = random.randint(220, 255)
+                    g = random.randint(40, 90)
+                t.color(min(255, r), g, 0)
+            next_flicker = t_now + random.uniform(0.10, 0.25)
+        # heads occasional very subtle drift
+        if t_now - last_pop > 6:
+            for h in focus + groot:
+                h.dim(60 + random.randint(0, 30))
+            last_pop = t_now
+        time.sleep(1 / 30)
+
+
+# ---------- MEDIUM (groove) ----------
+
+def scene_groove(tripars, focus, groot, stop: threading.Event) -> None:
+    """2 Hz pulse on tripars, palette changes every 4s, heads gentle sway."""
+    _ensure_visible(tripars, focus, groot)
+    for h in focus + groot:
+        h.color("white")
+        h.dim(180)
+
+    palette = [
+        (255, 60, 120), (60, 120, 255), (60, 255, 120),
+        (255, 200, 60), (200, 60, 255), (60, 255, 220),
+    ]
+    pi = 0
+    last_change = time.time()
+
+    while not stop.is_set():
+        t_now = time.time()
+        # 2 Hz strong pulse with quick attack, slow decay
+        beat_phase = (t_now * 2) % 1.0
+        pulse = max(0.25, 1.0 - beat_phase * 0.85)  # 1 -> 0.15 over the beat
+        c = palette[pi]
+        col = (int(c[0] * pulse), int(c[1] * pulse), int(c[2] * pulse))
+        for t in tripars:
+            t.color(*col)
+
+        if t_now - last_change > 4.0:
+            pi = (pi + 1) % len(palette)
+            last_change = t_now
+
+        pan = int(128 + 45 * math.sin(t_now * 0.55))
+        tilt = int(128 + 15 * math.cos(t_now * 0.4))
+        for h in focus + groot:
+            h.position(pan, tilt)
+        time.sleep(1 / 40)
+
+
+def scene_pinwheel(tripars, focus, groot, stop: threading.Event) -> None:
+    """4 colour quadrants rotate around the ring at moderate speed."""
+    _ensure_visible(tripars, focus, groot)
+    ring, stage = tripar_groups()
+    for h in focus + groot:
+        h.color("white")
+        h.dim(200)
+
+    palette = [
+        (255, 50, 50), (50, 50, 255), (50, 255, 80), (255, 200, 50),
+    ]
+    while not stop.is_set():
+        t_now = time.time()
+        rotation = t_now * 1.4   # ring positions per second of rotation
+        for k, idx in enumerate(ring):
+            quad = (int(k + rotation) // 2) % len(palette)
+            tripars[idx].color(*palette[quad])
+        # stage row gets a darker mix
+        c = palette[int(rotation) % len(palette)]
+        dim = (int(c[0] * 0.55), int(c[1] * 0.55), int(c[2] * 0.55))
+        for idx in stage:
+            tripars[idx].color(*dim)
+
+        # heads slow circle
+        pan = int(128 + 40 * math.cos(t_now * 0.6))
+        tilt = int(128 + 30 * math.sin(t_now * 0.6))
+        for h in focus + groot:
+            h.position(pan, tilt)
+        time.sleep(1 / 30)
+
+
+def scene_lighthouse(tripars, focus, groot, stop: threading.Event) -> None:
+    """All heads sweep left-right in unison at moderate speed; backdrop hue rotates."""
+    _ensure_visible(tripars, focus, groot)
+    for h in focus + groot:
+        h.dim(255)
+        h.color("yellow")
+        try:
+            h._set("pan_tilt_speed", 90)
+        except (KeyError, ValueError):
+            pass
+        try:
+            h._set("speed", 90)
+        except (KeyError, ValueError):
+            pass
+
+    while not stop.is_set():
+        t_now = time.time()
+        # ~0.5 Hz sweep
+        pan = int(128 + 110 * math.sin(t_now * math.pi))
+        tilt = 90  # angled up toward crowd
+        for h in focus + groot:
+            h.position(pan, tilt)
+        # backdrop on tripars: slow hue rotation
+        col = hsv((t_now * 0.05) % 1.0, s=0.55, v=0.45)
+        for t in tripars:
+            t.color(*col)
+        time.sleep(1 / 30)
+
+
+# ---------- FAST (energetic) ----------
+
+def scene_chase_storm(tripars, focus, groot, stop: threading.Event) -> None:
+    """4 colour 'comets' with trailing fade chasing around the ring."""
+    _ensure_visible(tripars, focus, groot)
+    ring, stage = tripar_groups()
+    for h in focus + groot:
+        h.dim(220)
+        h.color("white")
+
+    chase_colors = [
+        (255, 50, 50),   # red
+        (50, 255, 100),  # green
+        (50, 100, 255),  # blue
+        (255, 200, 50),  # amber
+    ]
+    n = len(ring)
+    bg = (5, 0, 18)
+    speed = 9.0  # ring positions per second
+    chase_pos = 0.0
+    last_t = time.time()
+
+    while not stop.is_set():
+        now = time.time()
+        chase_pos = (chase_pos + speed * (now - last_t)) % n
+        last_t = now
+
+        # for each ring tripar, find the closest chase head and fade
+        for k, idx in enumerate(ring):
+            best = bg
+            best_dist = 999.0
+            for ci, frac in enumerate([0.0, 0.25, 0.5, 0.75]):
+                head_k = (chase_pos + frac * n) % n
+                d = min(abs(k - head_k), n - abs(k - head_k))
+                if d < 1.6 and d < best_dist:
+                    best_dist = d
+                    fade = max(0.0, 1.0 - d / 1.6)
+                    fade = fade * fade  # quadratic falloff for crisp head
+                    c = chase_colors[ci]
+                    best = (int(c[0] * fade), int(c[1] * fade), int(c[2] * fade))
+            tripars[idx].color(*best)
+
+        # stage row dim background
+        for idx in stage:
+            tripars[idx].color(*bg)
+
+        # heads sweep with the chase
+        pan = int(128 + 90 * math.sin(now * 0.9))
+        tilt = int(128 + 40 * math.cos(now * 1.3))
+        for h in focus + groot:
+            h.position(pan, tilt)
+        time.sleep(1 / 60)
+
+
+def scene_strobe_rain(tripars, focus, groot, stop: threading.Event) -> None:
+    """Random fast strobes per tripar — feels like rain. Heads strobe + sweep."""
+    _ensure_visible(tripars, focus, groot)
+    for h in focus + groot:
+        h.color("white")
+        h.dim(255)
+        h.shutter("strobe")
+
+    on_frames = [0] * len(tripars)
+    cur_color: list[tuple[int, int, int]] = [(0, 0, 0)] * len(tripars)
+    palette = [
+        (255, 255, 255),
+        (255, 110, 200),
+        (110, 200, 255),
+        (255, 200, 110),
+        (200, 110, 255),
+        (110, 255, 200),
+    ]
+
+    while not stop.is_set():
+        t_now = time.time()
+        for i, t in enumerate(tripars):
+            if on_frames[i] > 0:
+                on_frames[i] -= 1
+                t.color(*cur_color[i])
+            else:
+                if random.random() < 0.20:
+                    on_frames[i] = random.randint(1, 3)
+                    cur_color[i] = random.choice(palette)
+                else:
+                    t.color(0, 0, 0)
+        # heads pan/tilt rapidly
+        pan = int(128 + 100 * math.sin(t_now * 1.6))
+        tilt = int(128 + 60 * math.cos(t_now * 2.1))
+        for h in focus + groot:
+            h.position(pan, tilt)
+        time.sleep(1 / 60)
+
+
+# ---------- INSANE (peak) ----------
+
+def scene_glitch(tripars, focus, groot, stop: threading.Event) -> None:
+    """Chaotic — full rig randomised every 60-150 ms."""
+    _ensure_visible(tripars, focus, groot)
+    for h in focus + groot:
+        h.dim(255)
+        h.shutter("strobe")
+
+    next_change = 0.0
+    head_colors = ["red", "blue", "green", "yellow", "white"]
+
+    while not stop.is_set():
+        t_now = time.time()
+        if t_now >= next_change:
+            for t in tripars:
+                if random.random() < 0.78:
+                    t.color(
+                        random.randint(0, 255),
+                        random.randint(0, 255),
+                        random.randint(0, 255),
+                    )
+                else:
+                    t.color(0, 0, 0)
+            for h in focus + groot:
+                h.position(random.randint(0, 255), random.randint(40, 230))
+                try:
+                    h.color(random.choice(head_colors))
+                except ValueError:
+                    pass
+            next_change = t_now + random.uniform(0.06, 0.15)
+        time.sleep(1 / 60)
+
+
+def scene_supernova(tripars, focus, groot, stop: threading.Event) -> None:
+    """Repeating explosion — stage front pops first, ring ignites, then flash, then cool."""
+    _ensure_visible(tripars, focus, groot)
+    ring, stage = tripar_groups()
+    cycle = 1.4
+
+    for h in focus + groot:
+        h.color("white")
+
+    while not stop.is_set():
+        t_now = time.time()
+        p = (t_now % cycle) / cycle  # 0..1
+
+        if p < 0.10:
+            # gathering — dim purple
+            for t in tripars:
+                t.color(20, 0, 40)
+            for h in focus + groot:
+                h.dim(80)
+                h.shutter("open")
+        elif p < 0.30:
+            # stage explodes outward — bright cyan
+            f = (p - 0.10) / 0.20
+            v = int(255 * f)
+            for idx in stage:
+                tripars[idx].color(0, v, v)
+            for idx in ring:
+                tripars[idx].color(20, 0, 40)
+        elif p < 0.50:
+            # ring ignites — magenta
+            f = (p - 0.30) / 0.20
+            v = int(255 * f)
+            for idx in stage:
+                tripars[idx].color(0, 200, 220)
+            for idx in ring:
+                tripars[idx].color(v, 80, int(v * 0.9))
+        elif p < 0.80:
+            # peak — everything strobing white-magenta with fast head sweeps
+            for h in focus + groot:
+                h.shutter("strobe")
+                h.dim(255)
+            for t in tripars:
+                t.color(255, 200, 255)
+            pan = int(128 + 110 * math.sin(t_now * 5))
+            tilt = int(128 + 60 * math.cos(t_now * 4))
+            for h in focus + groot:
+                h.position(pan, tilt)
+        else:
+            # cool down
+            for h in focus + groot:
+                h.shutter("open")
+            f = 1.0 - (p - 0.80) / 0.20
+            v = int(180 * f)
+            for t in tripars:
+                t.color(v, int(v * 0.4), v)
+        time.sleep(1 / 60)
+
+
 # ----- registry: consumed by app.py -----
 
-SCENES: list[tuple[str, str, Scene]] = [
-    # geometry-aware (use the saved layout)
-    ("ring_spin",       "Ring spin",       scene_ring_spin),
-    ("radial_wave",     "Radial wave",     scene_radial_wave),
-    ("stage_chase",     "Stage chase",     scene_stage_chase),
-    ("ring_quadrants",  "Quadrants",       scene_ring_quadrants),
-    ("crowd_glow",      "Crowd glow",      scene_crowd_glow),
-    # generic looks
-    ("atmosphere", "Atmosphere", scene_atmosphere),
-    ("sunrise",    "Sunrise",    scene_sunrise),
-    ("chase",      "Chase",      scene_chase),
-    ("rainbow",    "Rainbow",    scene_rainbow),
-    ("buildup",    "Buildup",    scene_buildup),
-    ("drop",       "Drop",       scene_drop),
-    ("calm",       "Calm",       scene_calm),
-    ("disco",      "Disco",      scene_disco),
-    ("climax",     "Climax",     scene_climax),
-    ("fade",       "Fade out",   scene_fade),
-    ("beam_sweep", "Beam sweep", scene_beam_sweep),
-    ("police",     "Police",     scene_police),
-    ("fire",       "Fire",       scene_fire),
-    ("ocean",      "Ocean",      scene_ocean),
-    ("sunset",     "Sunset",     scene_sunset),
-    ("wipe",       "Wipe",       scene_wipe),
-    ("stars",      "Stars",      scene_stars),
-    ("evenodd",    "Even/Odd",   scene_evenodd),
+SCENES: list[tuple[str, str, Tempo, Scene]] = [
+    # ---- SLOW (atmospheric) ----
+    ("breathe",     "Breathe",       "slow",   scene_breathe),
+    ("drift",       "Drift",         "slow",   scene_drift),
+    ("ember",       "Ember",         "slow",   scene_ember),
+    ("ocean",       "Ocean",         "slow",   scene_ocean),
+    ("sunset",      "Sunset",        "slow",   scene_sunset),
+    ("crowd_glow",  "Crowd glow",    "slow",   scene_crowd_glow),
+
+    # ---- MEDIUM (groove) ----
+    ("groove",       "Groove",        "medium", scene_groove),
+    ("ring_spin",    "Ring spin",     "medium", scene_ring_spin),
+    ("radial_wave",  "Radial wave",   "medium", scene_radial_wave),
+    ("pinwheel",     "Pinwheel",      "medium", scene_pinwheel),
+    ("lighthouse",   "Lighthouse",    "medium", scene_lighthouse),
+    ("beam_sweep",   "Beam sweep",    "medium", scene_beam_sweep),
+    ("rainbow",      "Rainbow",       "medium", scene_rainbow),
+
+    # ---- FAST (energetic) ----
+    ("chase_storm",     "Chase storm",  "fast",   scene_chase_storm),
+    ("stage_chase",     "Stage chase",  "fast",   scene_stage_chase),
+    ("police",          "Police",       "fast",   scene_police),
+    ("disco",           "Disco",        "fast",   scene_disco),
+    ("ring_quadrants",  "Quadrants",    "fast",   scene_ring_quadrants),
+    ("strobe_rain",     "Strobe rain",  "fast",   scene_strobe_rain),
+    ("buildup",         "Buildup",      "fast",   scene_buildup),
+
+    # ---- INSANE (peak) ----
+    ("drop",        "Drop",          "insane", scene_drop),
+    ("climax",      "Climax",        "insane", scene_climax),
+    ("glitch",      "Glitch",        "insane", scene_glitch),
+    ("supernova",   "Supernova",     "insane", scene_supernova),
 ]
 
-SCENE_BY_KEY: dict[str, tuple[str, Scene]] = {
-    k: (label, fn) for k, label, fn in SCENES
+SCENE_BY_KEY: dict[str, tuple[str, Tempo, Scene]] = {
+    k: (label, tempo, fn) for k, label, tempo, fn in SCENES
 }

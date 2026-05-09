@@ -82,7 +82,7 @@ def _spawn_scene(key: str) -> None:
     global _scene_thread, _scene_stop, _current_scene
     assert _rig is not None
     _stop_current_scene()
-    _, fn = SCENE_BY_KEY[key]
+    _label, _tempo, fn = SCENE_BY_KEY[key]
     _scene_stop = threading.Event()
     stop = _scene_stop
 
@@ -217,12 +217,12 @@ def list_scenes():
     Patterns appear as keys "pattern:<name>"; the front-end can show
     them grouped if it cares about the prefix.
     """
-    items = [{"key": k, "label": label, "kind": "scene"}
-             for k, label, _ in SCENES]
+    items = [{"key": k, "label": label, "kind": "scene", "tempo": tempo}
+             for k, label, tempo, _ in SCENES]
     for name in sorted(_load_patterns()):
         if name.startswith("__"):  # hide auto-saved ad-hoc patterns
             continue
-        items.append({"key": f"pattern:{name}", "label": name, "kind": "pattern"})
+        items.append({"key": f"pattern:{name}", "label": name, "kind": "pattern", "tempo": "pattern"})
     return {"scenes": items, "running": _current_scene}
 
 

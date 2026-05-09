@@ -4,7 +4,7 @@ import { HexColorPicker } from "react-colorful";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import {
-  CircleSlash, Cloud, Disc3, Music2, Palette, Power, Sun, Wand2, Waves, Zap, ZapOff,
+  CircleSlash, Cloud, Disc3, Flame, Gauge, Leaf, Music2, Palette, Power, Sparkle, Sun, Wand2, Waves, Zap, ZapOff,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
@@ -17,7 +17,17 @@ import {
   atomicFlash, atomicLightning, atomicOff, atomicStrobeFast, atomicStrobeSlow,
   blackout, fetchScenes, fogLevel, fogOff, fogPuff, playScene, setAllColor, setAllDim, stopScene,
 } from "@/lib/api";
+import type { SceneItem, Tempo } from "@/lib/types";
 import { cn, hexToRgb, throttle } from "@/lib/utils";
+
+const TEMPO_INFO: Record<Tempo, { label: string; sub: string; icon: any; accent: string }> = {
+  slow:    { label: "Slow",    sub: "atmospheric, ambient",    icon: Leaf,    accent: "text-[#5fd6ff]" },
+  medium:  { label: "Medium",  sub: "groove, color washes",    icon: Gauge,   accent: "text-[#7c92ff]" },
+  fast:    { label: "Fast",    sub: "energetic, dance",        icon: Flame,   accent: "text-[#ffa64d]" },
+  insane:  { label: "Insane",  sub: "peak — strobes, chaos",   icon: Sparkle, accent: "text-[#ff5070]" },
+  pattern: { label: "Patterns",sub: "your saved sequences",    icon: Music2,  accent: "text-accent" },
+};
+const TEMPO_ORDER: Tempo[] = ["slow", "medium", "fast", "insane", "pattern"];
 
 export default function Controls() {
   const qc = useQueryClient();
@@ -169,60 +179,13 @@ export default function Controls() {
         </Card>
       </div>
 
-      {/* Scenes */}
-      <Card>
-        <CardHeader
-          title={<span className="flex items-center gap-2"><Sun className="size-3" />Scenes</span>}
-          subtitle="Tap to start, tap the running one to stop"
-          action={
-            running && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => stopMut.mutate()}
-                className="!h-8 gap-1.5"
-              >
-                <Power className="size-3.5" /> Stop scene
-              </Button>
-            )
-          }
-        />
-        <CardBody>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-            {items.map((s) => {
-              const active = running === s.key;
-              const isPattern = s.kind === "pattern";
-              return (
-                <motion.button
-                  key={s.key}
-                  layout
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => (active ? stopMut.mutate() : sceneMut.mutate(s.key))}
-                  className={cn(
-                    "group relative flex h-14 items-center justify-start gap-2 rounded-xl border px-3 text-sm transition",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-                    active
-                      ? "border-accent bg-accent text-black font-semibold shadow-glow"
-                      : isPattern
-                        ? "border-accent/40 bg-surface hover:bg-surface2 text-text"
-                        : "border-line bg-surface hover:bg-surface2 text-text",
-                  )}
-                >
-                  {isPattern ? (
-                    <Music2 className={cn("size-4 shrink-0", active ? "text-black" : "text-accent")} />
-                  ) : (
-                    <Sun className={cn("size-4 shrink-0", active ? "text-black" : "text-mutedFg group-hover:text-text")} />
-                  )}
-                  <span className="truncate">{s.label}</span>
-                  {active && (
-                    <span className="absolute right-2 top-2 size-1.5 rounded-full bg-black/70 animate-pulse" />
-                  )}
-                </motion.button>
-              );
-            })}
-          </div>
-        </CardBody>
-      </Card>
+      {/* Scenes — grouped by tempo */}
+      <SceneGrid
+        items={items}
+        running={running}
+        onPlay={(k) => sceneMut.mutate(k)}
+        onStop={() => stopMut.mutate()}
+      />
 
       {/* Sticky blackout dock */}
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 bg-gradient-to-t from-bg via-bg/85 to-transparent p-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
@@ -257,5 +220,88 @@ export default function Controls() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ----- scene grid grouped by tempo -----
+
+function SceneGrid({
+  items, running, onPlay, onStop,
+}: {
+  items: SceneItem[];
+  running: string | null;
+  onPlay: (key: string) => void;
+  onStop: () => void;
+}) {
+  const groups = TEMPO_ORDER.map((t) => ({
+    tempo: t,
+    items: items.filter((s) => s.tempo === t),
+  })).filter((g) => g.items.length > 0);
+
+  return (
+    <Card>
+      <CardHeader
+        title={<span className="flex items-center gap-2"><Sun className="size-3" />Scenes</span>}
+        subtitle="Tap to start; tap the running one to stop. Patterns appear at the bottom."
+        action={
+          running && (
+            <Button size="sm" variant="ghost" onClick={onStop} className="!h-8 gap-1.5">
+              <Power className="size-3.5" /> Stop scene
+            </Button>
+          )
+        }
+      />
+      <CardBody className="space-y-5">
+        {groups.map((g) => {
+          const info = TEMPO_INFO[g.tempo];
+          const Icon = info.icon;
+          return (
+            <div key={g.tempo}>
+              <div className="mb-2 flex items-center gap-2">
+                <Icon className={cn("size-3.5", info.accent)} strokeWidth={2.25} />
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text">
+                  {info.label}
+                </span>
+                <span className="text-[11px] text-muted">{info.sub}</span>
+                <span className="ml-auto text-[10px] tabular-nums text-muted">{g.items.length}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                {g.items.map((s) => {
+                  const active = running === s.key;
+                  const isPattern = s.kind === "pattern";
+                  return (
+                    <motion.button
+                      key={s.key}
+                      layout
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => (active ? onStop() : onPlay(s.key))}
+                      className={cn(
+                        "group relative flex h-14 items-center justify-start gap-2 rounded-xl border px-3 text-sm transition",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                        active
+                          ? "border-accent bg-accent text-black font-semibold shadow-glow"
+                          : isPattern
+                            ? "border-accent/40 bg-surface hover:bg-surface2 text-text"
+                            : "border-line bg-surface hover:bg-surface2 text-text",
+                      )}
+                    >
+                      {isPattern ? (
+                        <Music2 className={cn("size-4 shrink-0", active ? "text-black" : "text-accent")} />
+                      ) : (
+                        <Icon className={cn("size-4 shrink-0", active ? "text-black" : info.accent)} strokeWidth={2.25} />
+                      )}
+                      <span className="truncate">{s.label}</span>
+                      {active && (
+                        <span className="absolute right-2 top-2 size-1.5 rounded-full bg-black/70 animate-pulse" />
+                      )}
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </CardBody>
+    </Card>
   );
 }

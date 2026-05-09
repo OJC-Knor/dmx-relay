@@ -14,10 +14,13 @@ export type PinspotState = {
 
 export type LayoutPositions = Record<string, { x: number; y: number }>;
 
+export type Tempo = "slow" | "medium" | "fast" | "insane" | "pattern";
+
 export type SceneItem = {
   key: string;          // built-in key, or "pattern:<name>"
   label: string;
   kind: "scene" | "pattern";
+  tempo: Tempo;
 };
 
 export type ScenesResponse = {
