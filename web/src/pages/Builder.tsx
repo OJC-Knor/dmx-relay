@@ -6,12 +6,10 @@ import { Button } from "@/components/Button";
 import { Section } from "@/components/Section";
 import { useToast } from "@/components/Toast";
 import {
-  deletePattern, fetchPatterns, fetchScenes, playScene, savePattern, stopScene,
+  deletePattern, fetchPatterns, fetchRig, fetchScenes, playScene, savePattern, stopScene,
 } from "@/lib/api";
-import type { Pattern } from "@/lib/types";
+import type { FixtureMeta, Pattern } from "@/lib/types";
 import { cn, rgbToHex } from "@/lib/utils";
-
-const TRIPAR_COUNT = 12;
 
 const PALETTE: { name: string; rgb: [number, number, number] | null }[] = [
   { name: "off",    rgb: null },
@@ -26,24 +24,29 @@ const PALETTE: { name: string; rgb: [number, number, number] | null }[] = [
   { name: "white",  rgb: [255, 255, 255] },
 ];
 
+const TYPE_GROUPS: { type: FixtureMeta["type"]; label: string; rgb: boolean }[] = [
+  { type: "tripar",    label: "Tripars",       rgb: true },
+  { type: "pinspot",   label: "Pinspots",      rgb: false },
+  { type: "spotlight", label: "Spotlight",     rgb: false },
+  { type: "atomic",    label: "Atomic",        rgb: false },
+  { type: "focus",     label: "Focus Spots",   rgb: false },
+  { type: "groot",     label: "Groot heads",   rgb: false },
+  { type: "fog",       label: "Fog",           rgb: false },
+];
+
 type Cell = [number, number, number] | null;
 type Tracks = Record<string, Cell[]>;
 
-function blankTracks(steps: number): Tracks {
-  const out: Tracks = {};
-  for (let i = 0; i < TRIPAR_COUNT; i++) {
-    out[`tripar-${i + 1}`] = Array.from({ length: steps }, () => null);
-  }
-  return out;
+function blank(steps: number, fixtures: FixtureMeta[]): Tracks {
+  return Object.fromEntries(fixtures.map((f) => [f.id, Array.from({ length: steps }, () => null)]));
 }
 
-function reshape(tracks: Tracks, steps: number): Tracks {
+function reshape(tracks: Tracks, steps: number, fixtures: FixtureMeta[]): Tracks {
   const out: Tracks = {};
-  for (let i = 0; i < TRIPAR_COUNT; i++) {
-    const id = `tripar-${i + 1}`;
-    const arr = (tracks[id] ?? []).slice(0, steps);
+  for (const f of fixtures) {
+    const arr = (tracks[f.id] ?? []).slice(0, steps);
     while (arr.length < steps) arr.push(null);
-    out[id] = arr;
+    out[f.id] = arr;
   }
   return out;
 }
@@ -52,43 +55,50 @@ export default function Builder() {
   const toast = useToast();
   const qc = useQueryClient();
 
+  const rig = useQuery({ queryKey: ["rig"], queryFn: fetchRig });
+  const fixtures = rig.data?.fixtures ?? [];
+
   const [name, setName] = useState("");
   const [steps, setSteps] = useState(16);
   const [bpm, setBpm] = useState(120);
-  const [tracks, setTracks] = useState<Tracks>(() => blankTracks(16));
-  const [brushIdx, setBrushIdx] = useState(1);                 // pointer into PALETTE
+  const [tracks, setTracks] = useState<Tracks>({});
+  const [brushIdx, setBrushIdx] = useState(1);
   const [customColor, setCustomColor] = useState<[number, number, number]>([255, 255, 255]);
   const [useCustom, setUseCustom] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const [enabledTypes, setEnabledTypes] = useState<Set<string>>(
+    () => new Set(["tripar", "pinspot", "spotlight", "atomic", "focus", "groot", "fog"]),
+  );
+
+  // initialise tracks once we know the fixture list
+  useEffect(() => {
+    if (fixtures.length && Object.keys(tracks).length === 0) {
+      setTracks(blank(steps, fixtures));
+    }
+  }, [fixtures, steps, tracks]);
 
   const stepMs = useMemo(() => Math.round(60_000 / (bpm * 4)), [bpm]);
 
-  // play state — mirror server
   const scenes = useQuery({ queryKey: ["scenes"], queryFn: fetchScenes, refetchInterval: 1500 });
   const running = scenes.data?.running ?? null;
-  const playing = !!running && running.startsWith("pattern:");
-  const playingThis = playing && running === `pattern:${name || "__live"}`;
+  const playingThis = !!running && running === `pattern:${name || "__live"}`;
 
-  // local playhead (purely cosmetic; updates faster than the server roundtrip)
+  // local playhead (cosmetic)
   const [playCol, setPlayCol] = useState(-1);
   const playTimer = useRef<number | null>(null);
   useEffect(() => {
     if (playTimer.current) { clearInterval(playTimer.current); playTimer.current = null; }
     if (playingThis) {
       setPlayCol(0);
-      playTimer.current = window.setInterval(() => {
-        setPlayCol((c) => (c + 1) % steps);
-      }, stepMs);
+      playTimer.current = window.setInterval(() => setPlayCol((c) => (c + 1) % steps), stepMs);
     } else {
       setPlayCol(-1);
     }
     return () => { if (playTimer.current) clearInterval(playTimer.current); };
   }, [playingThis, steps, stepMs]);
 
-  // patterns list
   const patterns = useQuery({ queryKey: ["patterns"], queryFn: fetchPatterns });
 
-  // mutations
   const saveMut = useMutation({
     mutationFn: ({ name, p }: { name: string; p: Pattern }) => savePattern(name, p),
     onSuccess: () => {
@@ -106,12 +116,10 @@ export default function Builder() {
   const playMut = useMutation({ mutationFn: playScene });
   const stopMut = useMutation({ mutationFn: stopScene });
 
-  // ----- actions -----
-
   const onResize = (newSteps: number) => {
     const n = Math.max(2, Math.min(64, newSteps));
     setSteps(n);
-    setTracks((t) => reshape(t, n));
+    setTracks((t) => reshape(t, n, fixtures));
   };
 
   const packPattern = (): Pattern => ({
@@ -148,7 +156,7 @@ export default function Builder() {
 
   const clear = () => {
     if (!confirm("Clear the whole pattern?")) return;
-    setTracks(blankTracks(steps));
+    setTracks(blank(steps, fixtures));
   };
 
   const loadPattern = (n: string) => {
@@ -158,11 +166,10 @@ export default function Builder() {
     setSteps(p.steps);
     setBpm(p.bpm);
     const next: Tracks = {};
-    for (let i = 0; i < TRIPAR_COUNT; i++) {
-      const id = `tripar-${i + 1}`;
-      const arr = (p.tracks[id] ?? []).slice(0, p.steps);
-      next[id] = arr.map((c) => ((c[0] || c[1] || c[2]) ? c : null));
-      while (next[id].length < p.steps) next[id].push(null);
+    for (const f of fixtures) {
+      const arr = (p.tracks[f.id] ?? []).slice(0, p.steps);
+      next[f.id] = arr.map((c) => ((c[0] || c[1] || c[2]) ? c : null));
+      while (next[f.id].length < p.steps) next[f.id].push(null);
     }
     setTracks(next);
   };
@@ -170,19 +177,27 @@ export default function Builder() {
   // ----- painting -----
 
   const dragging = useRef(false);
-  const currentBrushColor = (): Cell => {
+  const currentBrush = (): Cell => {
     if (useCustom) return [...customColor];
     return PALETTE[brushIdx].rgb ? [...PALETTE[brushIdx].rgb!] : null;
   };
 
   const paint = (id: string, col: number) => {
-    const c = currentBrushColor();
+    const c = currentBrush();
     setTracks((t) => {
-      const next = { ...t, [id]: [...t[id]] };
-      next[id][col] = c;
-      return next;
+      const prev = t[id];
+      if (!prev) return t;
+      const nextRow = prev.slice();
+      nextRow[col] = c;
+      return { ...t, [id]: nextRow };
     });
   };
+
+  // group fixtures
+  const groups = TYPE_GROUPS.map((g) => ({
+    ...g,
+    fixtures: fixtures.filter((f) => f.type === g.type),
+  })).filter((g) => g.fixtures.length > 0);
 
   return (
     <>
@@ -257,7 +272,7 @@ export default function Builder() {
         </div>
       </Section>
 
-      {/* Brush palette */}
+      {/* Brush */}
       <Section title="Brush">
         <div className="flex flex-wrap items-center gap-2">
           {PALETTE.map((c, i) => (
@@ -266,9 +281,9 @@ export default function Builder() {
               title={c.name}
               onClick={() => { setBrushIdx(i); setUseCustom(false); }}
               className={cn(
-                "h-9 w-9 rounded-md border-2 transition",
+                "h-9 w-9 rounded-md border-2 transition relative",
                 !useCustom && i === brushIdx ? "border-text scale-110" : "border-line",
-                c.name === "off" && "bg-surface2 relative",
+                c.name === "off" && "bg-surface2",
               )}
               style={c.rgb ? { background: `rgb(${c.rgb.join(",")})` } : undefined}
             >
@@ -305,16 +320,43 @@ export default function Builder() {
         </div>
       </Section>
 
+      {/* Group filter */}
+      <Section title="Show rows">
+        <div className="flex flex-wrap gap-2">
+          {TYPE_GROUPS.map((g) => {
+            const has = fixtures.some((f) => f.type === g.type);
+            if (!has) return null;
+            const on = enabledTypes.has(g.type);
+            return (
+              <button
+                key={g.type}
+                onClick={() => setEnabledTypes((s) => {
+                  const next = new Set(s);
+                  if (on) next.delete(g.type); else next.add(g.type);
+                  return next;
+                })}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs",
+                  on ? "border-accent bg-accent/15 text-accent" : "border-line text-muted",
+                )}
+              >
+                {g.label}
+              </button>
+            );
+          })}
+        </div>
+      </Section>
+
       {/* Grid */}
       <Section
         title="Pattern"
-        hint={<span>tap or drag to paint • <span className="text-accent">{playingThis ? "playing" : "paused"}</span></span>}
+        hint={<span>{playingThis ? <span className="text-accent">▶ playing</span> : "tap or drag to paint"}</span>}
       >
         <div className="scrollbar-thin overflow-x-auto">
           <div className="inline-block min-w-full rounded-lg border border-line bg-surface p-3">
             {/* step header */}
             <div className="mb-1 flex">
-              <div className="w-10" />
+              <div className="w-12" />
               {Array.from({ length: steps }).map((_, s) => (
                 <div
                   key={s}
@@ -327,46 +369,65 @@ export default function Builder() {
                 </div>
               ))}
             </div>
-            {/* rows */}
-            {Array.from({ length: TRIPAR_COUNT }).map((_, i) => {
-              const id = `tripar-${i + 1}`;
-              return (
-                <div key={id} className="flex">
-                  <div className="flex w-10 items-center justify-end pr-2 text-[11px] tabular-nums text-muted">
-                    T{i + 1}
-                  </div>
-                  {Array.from({ length: steps }).map((_, s) => {
-                    const c = tracks[id]?.[s];
-                    const isPlaying = playCol === s;
-                    const beat = s % 4 === 0;
-                    return (
-                      <button
-                        key={s}
-                        onPointerDown={(e) => {
-                          e.preventDefault();
-                          (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
-                          dragging.current = true;
-                          paint(id, s);
-                        }}
-                        onPointerEnter={() => { if (dragging.current) paint(id, s); }}
-                        onPointerUp={() => { dragging.current = false; }}
-                        onPointerCancel={() => { dragging.current = false; }}
-                        className={cn(
-                          "m-px h-7 w-6 rounded border touch-none",
-                          beat ? "border-accent/40" : "border-line",
-                          isPlaying && "ring-2 ring-accent ring-inset",
-                        )}
-                        style={c ? { background: `rgb(${c.join(",")})` } : { background: "var(--tw-bg)", backgroundColor: "#1f1f25" }}
-                      />
-                    );
-                  })}
+
+            {groups.filter((g) => enabledTypes.has(g.type)).map((g) => (
+              <div key={g.type} className="mt-2">
+                <div className="mb-1 mt-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-muted">
+                  <span className="h-px flex-1 bg-line/60" />
+                  <span>{g.label}</span>
+                  <span className="h-px flex-1 bg-line/60" />
                 </div>
-              );
-            })}
+                {g.fixtures.map((f) => (
+                  <div key={f.id} className="flex">
+                    <div className="flex w-12 items-center justify-end pr-2 text-[11px] tabular-nums text-muted">
+                      {f.label}
+                    </div>
+                    {Array.from({ length: steps }).map((_, s) => {
+                      const c = tracks[f.id]?.[s];
+                      const isPlaying = playCol === s;
+                      const beat = s % 4 === 0;
+                      // For non-RGB rows, render the cell as a brightness-only
+                      // grey so the user can see "this fixture is on" without
+                      // misleading colour info.
+                      const fill = !c
+                        ? undefined
+                        : g.rgb
+                          ? `rgb(${c.join(",")})`
+                          : (() => {
+                              const v = Math.max(c[0], c[1], c[2]);
+                              return `rgb(${v}, ${v}, ${v})`;
+                            })();
+                      return (
+                        <button
+                          key={s}
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
+                            dragging.current = true;
+                            paint(f.id, s);
+                          }}
+                          onPointerEnter={() => { if (dragging.current) paint(f.id, s); }}
+                          onPointerUp={() => { dragging.current = false; }}
+                          onPointerCancel={() => { dragging.current = false; }}
+                          className={cn(
+                            "m-px h-7 w-6 rounded border touch-none",
+                            beat ? "border-accent/40" : "border-line",
+                            isPlaying && "ring-2 ring-accent ring-inset",
+                          )}
+                          style={fill ? { background: fill } : { backgroundColor: "#1f1f25" }}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            ))}
           </div>
         </div>
         <div className="mt-3 text-[11px] text-muted">
-          {(stepMs * steps / 1000).toFixed(2)}s loop · {Object.values(tracks).flat().filter((c) => c !== null).length} cells lit
+          {(stepMs * steps / 1000).toFixed(2)}s loop ·
+          {" "}
+          {Object.values(tracks).flat().filter((c) => c !== null).length} cells lit
         </div>
       </Section>
     </>

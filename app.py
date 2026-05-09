@@ -428,38 +428,86 @@ def _spawn_pattern(name: str, pattern: dict) -> None:
 
 
 def _play_pattern_loop(rig: Rig, stop: threading.Event, pattern: dict) -> None:
-    """Step through a tripar pattern indefinitely, one row per tripar."""
-    tracks = pattern.get("tracks", {})       # {tripar-1: [[r,g,b], ...], ...}
+    """Step through a multi-fixture pattern indefinitely.
+
+    Each track is keyed by fixture id (tripar-N, pinspot-N, spotlight,
+    focus-N, groot-N, atomic, fog) and holds an array of [r,g,b] cells.
+    The player normalises the colour per fixture type:
+      - tripar    : color(r,g,b)
+      - pinspot   : dim(max(r,g,b))
+      - spotlight : set(any)
+      - focus/groot head: dim(max), shutter open, color held at default
+      - atomic    : intensity(max), default flash params if non-zero
+      - fog       : output(max)
+    """
+    tracks = pattern.get("tracks", {})
     step_ms = max(20, int(pattern.get("step_ms", 200)))
     n_steps = max((len(v) for v in tracks.values()), default=0)
     if n_steps == 0:
-        # nothing to play; just hold dark
         for t in rig.tripars:
             t.off()
         while not stop.is_set():
             time.sleep(0.1)
         return
 
+    # Build {fixture_id: (kind, fixture)} lookup
+    fmap: dict[str, tuple[str, object]] = {}
+    for i, t in enumerate(rig.tripars):
+        fmap[f"tripar-{i + 1}"] = ("tripar", t)
+    for i, p in enumerate(rig.pinspots):
+        fmap[f"pinspot-{i + 1}"] = ("pinspot", p)
+    fmap["spotlight"] = ("spotlight", rig.spotlight)
+    for i, h in enumerate(rig.focus):
+        fmap[f"focus-{i + 1}"] = ("head", h)
+    for i, h in enumerate(rig.groot):
+        fmap[f"groot-{i + 1}"] = ("head", h)
+    fmap["atomic"] = ("atomic", rig.atomic)
+    fmap["fog"] = ("fog", rig.fog)
+
+    # Pre-enable so dimmers/shutters are open
     for t in rig.tripars:
         t.enable()
+    for h in rig.heads:
+        h.shutter("open")
+        h.color("white")
 
     step = 0
     period = step_ms / 1000.0
     while not stop.is_set():
-        for tripar_id, colors in tracks.items():
-            try:
-                idx = int(tripar_id.split("-")[1]) - 1
-            except (ValueError, IndexError):
+        for fid, cells in tracks.items():
+            if not cells:
                 continue
-            if not (0 <= idx < len(rig.tripars)):
+            entry = fmap.get(fid)
+            if entry is None:
                 continue
-            if not colors:
-                continue
-            r, g, b = colors[step % len(colors)]
-            rig.tripars[idx].color(r, g, b)
+            kind, fixture = entry
+            r, g, b = cells[step % len(cells)]
+            _apply_cell(kind, fixture, r, g, b)
         if stop.wait(period):
             return
         step += 1
+
+
+def _apply_cell(kind: str, fixture, r: int, g: int, b: int) -> None:
+    if kind == "tripar":
+        fixture.color(r, g, b)
+    elif kind == "pinspot":
+        fixture.dim(max(r, g, b))
+    elif kind == "spotlight":
+        fixture.set(bool(r or g or b))
+    elif kind == "head":
+        fixture.dim(max(r, g, b))
+    elif kind == "atomic":
+        v = max(r, g, b)
+        if v > 0:
+            fixture.intensity(v)
+            fixture.duration(80)
+            fixture.rate(0)
+            fixture.effect("none")
+        else:
+            fixture.intensity(0)
+    elif kind == "fog":
+        fixture.output(max(r, g, b))
 
 
 # ----- SPA fallback (must be registered LAST) -----
