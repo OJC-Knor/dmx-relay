@@ -2,7 +2,7 @@
 
 export type FixtureMeta = {
   id: string;
-  type: "tripar" | "pinspot" | "focus" | "groot" | "atomic" | "fog";
+  type: "tripar" | "pinspot" | "spotlight" | "focus" | "groot" | "atomic" | "fog";
   label: string;
   addr: number;
 };
@@ -57,6 +57,7 @@ export type LiveState = {
   running_scene: string | null;
   tripars: TriparState[];
   pinspots: PinspotState[];
+  spotlight: number;       // 0 or 255
   focus: HeadState[];
   groot: HeadState[];
   atomic: AtomicState;

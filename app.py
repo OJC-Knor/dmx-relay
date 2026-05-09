@@ -304,7 +304,7 @@ def get_state():
     if _rig is None:
         return {
             "running_scene": None, "tripars": [], "pinspots": [],
-            "focus": [], "groot": [], "atomic": {}, "fog": 0,
+            "spotlight": 0, "focus": [], "groot": [], "atomic": {}, "fog": 0,
         }
     return {
         "running_scene": _current_scene,
@@ -312,6 +312,7 @@ def get_state():
                      for i, t in enumerate(_rig.tripars)],
         "pinspots": [{"id": f"pinspot-{i + 1}", **p.state}
                      for i, p in enumerate(_rig.pinspots)],
+        "spotlight": _rig.spotlight.state["level"],
         "focus":    [{"id": f"focus-{i + 1}",   **h.state}
                      for i, h in enumerate(_rig.focus)],
         "groot":    [{"id": f"groot-{i + 1}",   **h.state}

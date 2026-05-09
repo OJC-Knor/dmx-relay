@@ -6,6 +6,7 @@ const EMPTY: LiveState = {
   running_scene: null,
   tripars: [],
   pinspots: [],
+  spotlight: 0,
   focus: [],
   groot: [],
   atomic: { intensity: 0, duration: 0, rate: 0, effect: 0 },

@@ -6,12 +6,13 @@ Update this when fixtures get repatched on the desk.
 from dataclasses import dataclass, field
 
 from dmx import Universe
-from fixtures import Atomic, FocusSpotTwo, Fog, MegaTripar, MSZoom250, Pinspot
+from fixtures import Atomic, FocusSpotTwo, Fog, MegaTripar, MSZoom250, Pinspot, Switch
 
 PORT = "/dev/cu.usbserial-BG03CYC2"
 
 TRIPAR_ADDRS = [1 + i * 6 for i in range(12)]    # 1, 7, 13, ..., 67
-PINSPOT_ADDRS = [80, 81, 82, 83]                 # 4 single-channel dimmers
+PINSPOT_ADDRS = [80, 81, 82]                     # 3 single-channel dimmers
+SPOTLIGHT_ADDR = 83                              # 1 binary switch
 ATOMIC_ADDR = 100
 FOCUS_ADDRS = [110, 128, 146, 164]
 GROOT_ADDRS = [182, 198, 214]
@@ -25,6 +26,7 @@ def fixture_ids() -> list[dict]:
         out.append({"id": f"tripar-{i}", "type": "tripar", "label": f"T{i}", "addr": a})
     for i, a in enumerate(PINSPOT_ADDRS, 1):
         out.append({"id": f"pinspot-{i}", "type": "pinspot", "label": f"P{i}", "addr": a})
+    out.append({"id": "spotlight", "type": "spotlight", "label": "SPL", "addr": SPOTLIGHT_ADDR})
     for i, a in enumerate(FOCUS_ADDRS, 1):
         out.append({"id": f"focus-{i}", "type": "focus", "label": f"F{i}", "addr": a})
     for i, a in enumerate(GROOT_ADDRS, 1):
@@ -38,6 +40,7 @@ def fixture_ids() -> list[dict]:
 class Rig:
     tripars: list[MegaTripar]
     pinspots: list[Pinspot]
+    spotlight: Switch
     focus: list[FocusSpotTwo]
     groot: list[MSZoom250]
     atomic: Atomic
@@ -60,6 +63,7 @@ def build_rig(uni: Universe) -> Rig:
         Pinspot(start_address=a, name=f"Pinspot {i + 1}")
         for i, a in enumerate(PINSPOT_ADDRS)
     ]
+    spotlight = Switch(start_address=SPOTLIGHT_ADDR, name="Spotlight")
     focus = [
         FocusSpotTwo(start_address=a, name=f"Focus {i + 1}")
         for i, a in enumerate(FOCUS_ADDRS)
@@ -71,7 +75,7 @@ def build_rig(uni: Universe) -> Rig:
     atomic = Atomic(start_address=ATOMIC_ADDR, name="Atomic")
     fog = Fog(start_address=FOG_ADDR, name="Fog")
 
-    uni.add(*tripars, *pinspots, *focus, *groot, atomic, fog)
+    uni.add(*tripars, *pinspots, spotlight, *focus, *groot, atomic, fog)
 
     for t in tripars:
         t.enable()
@@ -81,10 +85,11 @@ def build_rig(uni: Universe) -> Rig:
         h.home()
     for p in pinspots:
         p.off()
+    spotlight.off()
     atomic.blackout()
     fog.output(0)
 
     return Rig(
-        tripars=tripars, pinspots=pinspots, focus=focus, groot=groot,
-        atomic=atomic, fog=fog,
+        tripars=tripars, pinspots=pinspots, spotlight=spotlight,
+        focus=focus, groot=groot, atomic=atomic, fog=fog,
     )

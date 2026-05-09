@@ -78,6 +78,9 @@ export default function Viz() {
           if (f.type === "pinspot") {
             return <PinspotDot key={f.id} f={f} p={p} pin={pinspots[f.id]} />;
           }
+          if (f.type === "spotlight") {
+            return <SpotlightDot key={f.id} f={f} p={p} on={state.spotlight > 0} />;
+          }
           if (f.type === "focus" || f.type === "groot") {
             const h = (f.type === "focus" ? focus : groot)[f.id];
             return <Head key={f.id} f={f} p={p} h={h} kind={f.type} />;
@@ -222,6 +225,24 @@ function PinspotDot({ f, p, pin }: { f: FixtureMeta; p: { x: number; y: number }
         width: 18, height: 18,
         background: c,
         boxShadow: k > 0.05 ? `0 0 ${8 + k * 14}px ${c}` : "none",
+        transition: "background-color 60ms linear, box-shadow 80ms linear",
+      }}
+    />
+  );
+}
+
+function SpotlightDot({ f, p, on }: { f: FixtureMeta; p: { x: number; y: number }; on: boolean }) {
+  const k = on ? 1 : 0;
+  const c = `rgb(${(255 * k) | 0}, ${(200 * k) | 0}, ${(80 * k) | 0})`;  // amber
+  return (
+    <div
+      className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-[1.5px] border-white/30"
+      title={f.label}
+      style={{
+        left: `${p.x * 100}%`, top: `${p.y * 100}%`,
+        width: 22, height: 22,
+        background: c,
+        boxShadow: on ? `0 0 16px ${c}, 0 0 32px rgba(255,200,80,0.5)` : "none",
         transition: "background-color 60ms linear, box-shadow 80ms linear",
       }}
     />
