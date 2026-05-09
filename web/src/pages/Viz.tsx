@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { Section } from "@/components/Section";
 import { fetchLayout, fetchRig } from "@/lib/api";
-import type { AtomicState, FixtureMeta, HeadState, TriparState } from "@/lib/types";
+import type { AtomicState, FixtureMeta, HeadState, PinspotState, TriparState } from "@/lib/types";
 import { useLiveState } from "@/lib/useLiveState";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +47,8 @@ export default function Viz() {
 
   const tripars: Record<string, TriparState> = {};
   state.tripars.forEach((t) => (tripars[t.id] = t));
+  const pinspots: Record<string, PinspotState> = {};
+  state.pinspots?.forEach((p) => (pinspots[p.id] = p));
   const focus: Record<string, HeadState> = {};
   state.focus.forEach((h) => (focus[h.id] = h));
   const groot: Record<string, HeadState> = {};
@@ -72,6 +74,9 @@ export default function Viz() {
           const p = positions[f.id] ?? { x: 0.5, y: 0.5 };
           if (f.type === "tripar") {
             return <TriparDot key={f.id} f={f} p={p} t={tripars[f.id]} />;
+          }
+          if (f.type === "pinspot") {
+            return <PinspotDot key={f.id} f={f} p={p} pin={pinspots[f.id]} />;
           }
           if (f.type === "focus" || f.type === "groot") {
             const h = (f.type === "focus" ? focus : groot)[f.id];
@@ -200,6 +205,24 @@ function AtomicDot({ p, a }: { p: { x: number; y: number }; a: AtomicState }) {
           ? `0 0 ${20 + k * 30}px rgba(255,255,220,${k}), 0 0 ${40 + k * 60}px rgba(255,240,180,${k * 0.6})`
           : "none",
         transition: "background-color 40ms linear, box-shadow 40ms linear",
+      }}
+    />
+  );
+}
+
+function PinspotDot({ f, p, pin }: { f: FixtureMeta; p: { x: number; y: number }; pin?: PinspotState }) {
+  const k = (pin?.level ?? 0) / 255;
+  const c = `rgb(${(255 * k) | 0}, ${(220 * k) | 0}, ${(140 * k) | 0})`;  // warm white
+  return (
+    <div
+      className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
+      title={f.label}
+      style={{
+        left: `${p.x * 100}%`, top: `${p.y * 100}%`,
+        width: 18, height: 18,
+        background: c,
+        boxShadow: k > 0.05 ? `0 0 ${8 + k * 14}px ${c}` : "none",
+        transition: "background-color 60ms linear, box-shadow 80ms linear",
       }}
     />
   );

@@ -3,17 +3,18 @@
 Update this when fixtures get repatched on the desk.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from dmx import Universe
-from fixtures import Atomic, FocusSpotTwo, Fog, MegaTripar, MSZoom250
+from fixtures import Atomic, FocusSpotTwo, Fog, MegaTripar, MSZoom250, Pinspot
 
 PORT = "/dev/cu.usbserial-BG03CYC2"
 
 TRIPAR_ADDRS = [1 + i * 6 for i in range(12)]    # 1, 7, 13, ..., 67
+PINSPOT_ADDRS = [80, 81, 82, 83]                 # 4 single-channel dimmers
+ATOMIC_ADDR = 100
 FOCUS_ADDRS = [110, 128, 146, 164]
 GROOT_ADDRS = [182, 198, 214]
-ATOMIC_ADDR = 100
 FOG_ADDR = 500
 
 
@@ -22,18 +23,21 @@ def fixture_ids() -> list[dict]:
     out: list[dict] = []
     for i, a in enumerate(TRIPAR_ADDRS, 1):
         out.append({"id": f"tripar-{i}", "type": "tripar", "label": f"T{i}", "addr": a})
+    for i, a in enumerate(PINSPOT_ADDRS, 1):
+        out.append({"id": f"pinspot-{i}", "type": "pinspot", "label": f"P{i}", "addr": a})
     for i, a in enumerate(FOCUS_ADDRS, 1):
         out.append({"id": f"focus-{i}", "type": "focus", "label": f"F{i}", "addr": a})
     for i, a in enumerate(GROOT_ADDRS, 1):
         out.append({"id": f"groot-{i}", "type": "groot", "label": f"G{i}", "addr": a})
     out.append({"id": "atomic", "type": "atomic", "label": "ATM", "addr": ATOMIC_ADDR})
-    out.append({"id": "fog", "type": "fog", "label": "FOG", "addr": FOG_ADDR})
+    out.append({"id": "fog",    "type": "fog",    "label": "FOG", "addr": FOG_ADDR})
     return out
 
 
 @dataclass
 class Rig:
     tripars: list[MegaTripar]
+    pinspots: list[Pinspot]
     focus: list[FocusSpotTwo]
     groot: list[MSZoom250]
     atomic: Atomic
@@ -52,6 +56,10 @@ def build_rig(uni: Universe) -> Rig:
         MegaTripar(start_address=a, name=f"Tripar {i + 1}")
         for i, a in enumerate(TRIPAR_ADDRS)
     ]
+    pinspots = [
+        Pinspot(start_address=a, name=f"Pinspot {i + 1}")
+        for i, a in enumerate(PINSPOT_ADDRS)
+    ]
     focus = [
         FocusSpotTwo(start_address=a, name=f"Focus {i + 1}")
         for i, a in enumerate(FOCUS_ADDRS)
@@ -63,7 +71,7 @@ def build_rig(uni: Universe) -> Rig:
     atomic = Atomic(start_address=ATOMIC_ADDR, name="Atomic")
     fog = Fog(start_address=FOG_ADDR, name="Fog")
 
-    uni.add(*tripars, *focus, *groot, atomic, fog)
+    uni.add(*tripars, *pinspots, *focus, *groot, atomic, fog)
 
     for t in tripars:
         t.enable()
@@ -71,7 +79,12 @@ def build_rig(uni: Universe) -> Rig:
         h.home()
     for h in groot:
         h.home()
+    for p in pinspots:
+        p.off()
     atomic.blackout()
     fog.output(0)
 
-    return Rig(tripars=tripars, focus=focus, groot=groot, atomic=atomic, fog=fog)
+    return Rig(
+        tripars=tripars, pinspots=pinspots, focus=focus, groot=groot,
+        atomic=atomic, fog=fog,
+    )

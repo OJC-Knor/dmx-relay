@@ -5,6 +5,7 @@ import type { LiveState } from "./types";
 const EMPTY: LiveState = {
   running_scene: null,
   tripars: [],
+  pinspots: [],
   focus: [],
   groot: [],
   atomic: { intensity: 0, duration: 0, rate: 0, effect: 0 },

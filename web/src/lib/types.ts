@@ -2,9 +2,14 @@
 
 export type FixtureMeta = {
   id: string;
-  type: "tripar" | "focus" | "groot" | "atomic" | "fog";
+  type: "tripar" | "pinspot" | "focus" | "groot" | "atomic" | "fog";
   label: string;
   addr: number;
+};
+
+export type PinspotState = {
+  id: string;
+  level: number;
 };
 
 export type LayoutPositions = Record<string, { x: number; y: number }>;
@@ -51,6 +56,7 @@ export type AtomicState = {
 export type LiveState = {
   running_scene: string | null;
   tripars: TriparState[];
+  pinspots: PinspotState[];
   focus: HeadState[];
   groot: HeadState[];
   atomic: AtomicState;

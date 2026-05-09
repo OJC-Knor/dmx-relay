@@ -300,20 +300,24 @@ def get_rig():
 
 @app.get("/api/state")
 def get_state():
-    """Live fixture state for the visualizer (polled by /viz)."""
+    """Live fixture state for the visualizer."""
     if _rig is None:
-        return {"running_scene": None, "tripars": [], "focus": [], "groot": [],
-                "atomic": {}, "fog": 0}
+        return {
+            "running_scene": None, "tripars": [], "pinspots": [],
+            "focus": [], "groot": [], "atomic": {}, "fog": 0,
+        }
     return {
         "running_scene": _current_scene,
-        "tripars": [{"id": f"tripar-{i + 1}", **t.state}
-                    for i, t in enumerate(_rig.tripars)],
-        "focus":   [{"id": f"focus-{i + 1}",  **h.state}
-                    for i, h in enumerate(_rig.focus)],
-        "groot":   [{"id": f"groot-{i + 1}",  **h.state}
-                    for i, h in enumerate(_rig.groot)],
-        "atomic":  _rig.atomic.state,
-        "fog":     _rig.fog.state["level"],
+        "tripars":  [{"id": f"tripar-{i + 1}",  **t.state}
+                     for i, t in enumerate(_rig.tripars)],
+        "pinspots": [{"id": f"pinspot-{i + 1}", **p.state}
+                     for i, p in enumerate(_rig.pinspots)],
+        "focus":    [{"id": f"focus-{i + 1}",   **h.state}
+                     for i, h in enumerate(_rig.focus)],
+        "groot":    [{"id": f"groot-{i + 1}",   **h.state}
+                     for i, h in enumerate(_rig.groot)],
+        "atomic":   _rig.atomic.state,
+        "fog":      _rig.fog.state["level"],
     }
 
 

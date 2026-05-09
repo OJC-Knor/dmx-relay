@@ -9,11 +9,12 @@ import type { FixtureMeta, LayoutPositions } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const TYPE_BG: Record<FixtureMeta["type"], string> = {
-  tripar: "bg-tripar",
-  focus:  "bg-focus text-[#1a0d04]",
-  groot:  "bg-groot",
-  atomic: "bg-atomic",
-  fog:    "bg-fog text-[#003040]",
+  tripar:  "bg-tripar",
+  pinspot: "bg-yellow-300 text-black",
+  focus:   "bg-focus text-[#1a0d04]",
+  groot:   "bg-groot",
+  atomic:  "bg-atomic",
+  fog:     "bg-fog text-[#003040]",
 };
 
 export default function Editor() {
@@ -168,6 +169,7 @@ function Draggable({
 function Legend() {
   const items: { label: string; cls: string }[] = [
     { label: "Tripar",            cls: "bg-tripar" },
+    { label: "Pinspot",           cls: "bg-yellow-300" },
     { label: "Focus Spot",        cls: "bg-focus" },
     { label: "Groot (MS Zoom)",   cls: "bg-groot" },
     { label: "Atomic",            cls: "bg-atomic" },
