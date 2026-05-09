@@ -1,0 +1,24 @@
+# Append these lines to your LXC's config on the Proxmox host:
+#   /etc/pve/lxc/<vmid>.conf
+#
+# After editing, reboot the container:
+#   pct reboot <vmid>
+
+# --- USB-DMX adapter passthrough -------------------------------------
+# The DSD Tech / FTDI cable shows up as /dev/ttyUSB0 on the host.
+# Major device 188 is the kernel's tty USB-serial class.
+lxc.cgroup2.devices.allow: c 188:* rwm
+
+# Bind /dev/ttyUSB0 into the container at the same path. `optional`
+# means the container will boot even if the cable isn't plugged in;
+# the app falls back to mock mode in that case.
+lxc.mount.entry: /dev/ttyUSB0 dev/ttyUSB0 none bind,optional,create=file
+
+# --- (recommended) stable by-id symlink ------------------------------
+# If you have multiple USB-serial adapters on the host, pin THIS one
+# by its serial number. Replace the path with the output of
+#   ls -l /dev/serial/by-id/
+# on the host. Comment out the generic ttyUSB0 binding above when you
+# use this so they don't fight.
+#
+# lxc.mount.entry: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG03CYC2-if00-port0 dev/ttyUSB0 none bind,optional,create=file

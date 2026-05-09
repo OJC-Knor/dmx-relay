@@ -28,8 +28,11 @@ uv sync                         # Python deps
 cd web && npm install && cd ..  # JS deps
 ```
 
-The DMX adapter shows up as `/dev/cu.usbserial-BG03CYC2` on this Mac.
-If yours differs, update `PORT` in [`rig.py`](rig.py).
+The DMX adapter is auto-detected — `rig.PORT` looks for macOS
+`/dev/cu.usbserial-*`, then Linux `/dev/serial/by-id/usb-FTDI_*`,
+then `/dev/ttyUSB*`. Override with `DMX_PORT=/dev/whatever` in the env
+if needed. With no adapter present, `Universe` falls back to mock
+mode and the app keeps working for development.
 
 ## Run
 
@@ -53,6 +56,22 @@ cd web && npm run dev    # Vite on :5173 with HMR + proxy back to :8000
 ```
 
 Visit `http://localhost:5173`.
+
+## Deploy as a Proxmox LXC
+
+Full guide in [`deploy/README.md`](deploy/README.md). TL;DR:
+
+1. Create a Debian 13 unprivileged LXC.
+2. Append the USB-passthrough block from
+   [`deploy/proxmox-lxc.conf.example`](deploy/proxmox-lxc.conf.example)
+   to `/etc/pve/lxc/<vmid>.conf` and reboot the container.
+3. Inside the container, run:
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/OJC-Knor/dmx-relay/main/deploy/setup.sh | bash
+   ```
+4. Open `http://<lxc-ip>:8000`.
+
+Updates: `bash /opt/soos-lights/deploy/update.sh`.
 
 The UI has four pages:
 

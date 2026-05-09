@@ -3,12 +3,37 @@
 Update this when fixtures get repatched on the desk.
 """
 
+import glob
+import os
 from dataclasses import dataclass, field
 
 from dmx import Universe
 from fixtures import Atomic, FocusSpotTwo, Fog, MegaTripar, MSZoom250, Pinspot, Switch
 
-PORT = "/dev/cu.usbserial-BG03CYC2"
+
+def _detect_port() -> str:
+    """Pick a serial port for the USB-DMX adapter.
+
+    Order:
+      1. DMX_PORT env var if set (explicit override)
+      2. macOS FTDI VCP path  /dev/cu.usbserial-*
+      3. Linux stable by-id path for an FTDI FT232R
+      4. Linux generic /dev/ttyUSB*
+      5. Fallback to /dev/ttyUSB0 — Universe will mock if it can't open
+    """
+    env = os.environ.get("DMX_PORT")
+    if env:
+        return env
+    for p in sorted(glob.glob("/dev/cu.usbserial-*")):
+        return p
+    for p in sorted(glob.glob("/dev/serial/by-id/usb-FTDI_*")):
+        return p
+    for p in sorted(glob.glob("/dev/ttyUSB*")):
+        return p
+    return "/dev/ttyUSB0"
+
+
+PORT = _detect_port()
 
 TRIPAR_ADDRS = [1 + i * 6 for i in range(12)]    # 1, 7, 13, ..., 67
 PINSPOT_ADDRS = [80, 81, 82]                     # 3 single-channel dimmers

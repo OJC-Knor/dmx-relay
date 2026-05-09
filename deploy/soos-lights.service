@@ -1,0 +1,29 @@
+[Unit]
+Description=soos-lights DMX controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=soos
+Group=soos
+WorkingDirectory=/opt/soos-lights
+Environment="PATH=/opt/soos-lights/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="HOME=/opt/soos-lights"
+# DMX_PORT can be overridden here if auto-detection picks the wrong device:
+#   Environment="DMX_PORT=/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG03CYC2-if00-port0"
+
+ExecStart=/opt/soos-lights/.local/bin/uv run python app.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+
+# Light hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/soos-lights/state /opt/soos-lights/.cache
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
