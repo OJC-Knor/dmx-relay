@@ -4,6 +4,7 @@ Run: uv run python app.py
 Open: http://localhost:8000/  (or your LAN IP for phone access)
 """
 
+import asyncio
 import json
 import threading
 import time
@@ -12,8 +13,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from dmx import Universe
@@ -21,10 +23,7 @@ from rig import PORT, Rig, build_rig, fixture_ids
 from scenes import SCENES, SCENE_BY_KEY
 
 ROOT = Path(__file__).parent
-INDEX_PATH = ROOT / "templates" / "index.html"
-EDITOR_PATH = ROOT / "templates" / "editor.html"
-VIZ_PATH = ROOT / "templates" / "viz.html"
-BUILDER_PATH = ROOT / "templates" / "builder.html"
+WEB_DIST = ROOT / "web" / "dist"
 LAYOUT_PATH = ROOT / "state" / "layout.json"
 PATTERNS_PATH = ROOT / "state" / "patterns.json"
 
@@ -211,7 +210,7 @@ def fog_off():
 
 # ----- endpoints: scenes -----
 
-@app.get("/scenes")
+@app.get("/api/scenes")
 def list_scenes():
     """Built-in scenes + saved patterns.
 
@@ -330,26 +329,18 @@ def save_layout(layout: dict):
     return {"ok": True}
 
 
-# ----- UI -----
+# ----- live state websocket -----
 
-@app.get("/", response_class=HTMLResponse)
-def index():
-    return INDEX_PATH.read_text()
-
-
-@app.get("/editor", response_class=HTMLResponse)
-def editor():
-    return EDITOR_PATH.read_text()
-
-
-@app.get("/viz", response_class=HTMLResponse)
-def viz():
-    return VIZ_PATH.read_text()
-
-
-@app.get("/builder", response_class=HTMLResponse)
-def builder():
-    return BUILDER_PATH.read_text()
+@app.websocket("/ws/state")
+async def ws_state(ws: WebSocket):
+    """Push the live fixture state at ~20 Hz to every connected client."""
+    await ws.accept()
+    try:
+        while True:
+            await ws.send_json(get_state())
+            await asyncio.sleep(1 / 20)
+    except WebSocketDisconnect:
+        pass
 
 
 # ----- pattern builder -----
@@ -457,6 +448,30 @@ def _play_pattern_loop(rig: Rig, stop: threading.Event, pattern: dict) -> None:
         if stop.wait(period):
             return
         step += 1
+
+
+# ----- SPA fallback (must be registered LAST) -----
+# Serves the React build under web/dist for every GET that didn't match
+# an API route above. In dev, run `npm run dev` in web/ for HMR — Vite
+# proxies /api and /ws to this server.
+
+if WEB_DIST.exists():
+    @app.get("/{path:path}")
+    async def spa_fallback(path: str):
+        candidate = WEB_DIST / path
+        if path and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(WEB_DIST / "index.html")
+else:
+    @app.get("/")
+    async def no_build():
+        return HTMLResponse(
+            "<h1>soos-lights</h1>"
+            "<p>Frontend isn't built yet. From <code>web/</code>, run:</p>"
+            "<pre>npm install && npm run build</pre>"
+            "<p>Or for dev: <code>npm run dev</code> in <code>web/</code> "
+            "(HMR with proxy back to this server).</p>"
+        )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html, body { background: #0a0a0c; }
+body {
+  font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Range input thumb styling lives in Tailwind utilities elsewhere; the
+   Radix Slider primitives are styled per-component. */
+
+/* Hide scrollbars on the step grid horizontal overflow but keep them
+   functional. */
+.scrollbar-thin::-webkit-scrollbar { height: 6px; width: 6px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: #2a2a30; border-radius: 3px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }

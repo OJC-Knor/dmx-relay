@@ -1,8 +1,9 @@
 # soos-lights
 
-DMX lighting control for our rig — a Python core, a FastAPI web UI, and a
-library of looping scenes. Drives the rig directly through a generic
-FTDI-based USB-DMX adapter (DSD Tech) using the OpenDMX raw protocol.
+DMX lighting control for our rig — Python + FastAPI core, React + Tailwind
+front-end, library of looping scenes plus a step-sequencer pattern builder.
+Drives the rig directly through a generic FTDI-based USB-DMX adapter (DSD
+Tech) using the OpenDMX raw protocol.
 
 ## The rig
 
@@ -20,31 +21,50 @@ Manufacturer manuals in [`manuals/`](manuals/).
 
 ## Setup
 
-Requires Python 3.12 and [uv](https://docs.astral.sh/uv/).
+Requires Python 3.12 + [uv](https://docs.astral.sh/uv/) and Node 18+ + npm.
 
 ```sh
-uv sync
+uv sync                         # Python deps
+cd web && npm install && cd ..  # JS deps
 ```
 
 The DMX adapter shows up as `/dev/cu.usbserial-BG03CYC2` on this Mac.
-If yours has a different serial number, update the `PORT` constant at
-the top of `app.py` and the test scripts.
+If yours differs, update `PORT` in [`rig.py`](rig.py).
 
-## Run the web UI
+## Run
+
+**Production-ish (single server):**
 
 ```sh
-uv run python app.py
+cd web && npm run build && cd ..   # build the React app once
+uv run python app.py               # FastAPI serves /api, /ws, AND the built UI
 ```
 
 Listens on `0.0.0.0:8000`. Open `http://<mac-ip>:8000` from any device on
-the same Wi-Fi (use `ipconfig getifaddr en0` to find the IP).
+the same Wi-Fi. With no DMX adapter plugged in, `Universe` falls back to
+mock mode automatically — every page works and you can preview scenes
+in `/viz` without hardware.
 
-The UI has:
-- **All Tripars** — color picker, white slider, master dimmer
-- **Atomic** — single FLASH, slow / fast strobe, lightning, off
-- **Fog** — level slider, PUFF (3 s burst), off
-- **Scenes** — tap to start a looping scene, tap the running one to stop
-- **BLACKOUT** — sticky red bar at the bottom; stops the scene and zeroes everything
+**Dev (hot-reloaded UI):**
+
+```sh
+uv run python app.py     # backend on :8000
+cd web && npm run dev    # Vite on :5173 with HMR + proxy back to :8000
+```
+
+Visit `http://localhost:5173`.
+
+The UI has four pages:
+
+- **Controls** (`/`) — colour picker for all Tripars, white & dimmer
+  sliders, Atomic action buttons, Fog level + puff, scene grid (built-in
+  scenes and saved patterns), sticky BLACKOUT bar.
+- **Builder** (`/builder`) — FL-style step sequencer for tripar
+  patterns. Save them and they appear in the Controls scene grid.
+- **Viz** (`/viz`) — live rendering of the rig over a WebSocket; lets
+  you preview every scene without the hardware.
+- **Layout** (`/editor`) — drag fixtures to where they actually sit on
+  stage. Geometry-aware scenes read from this.
 
 ## Run individual fixture tests
 
@@ -70,16 +90,24 @@ uv run python tools/interactive.py
 
 ## Layout
 
-```
+```text
 .
-├── app.py            FastAPI app + embedded HTML UI
+├── app.py            FastAPI app: REST + WebSocket + SPA fallback
 ├── dmx.py            Universe (background sender thread, BREAK timing) + Fixture base
+├── rig.py            single source of truth for the patch (PORT, addresses, build_rig)
+├── layout.py         reads state/layout.json into geometric groupings (ring vs stage, etc.)
 ├── scenes.py         looping scenes — each takes (tripars, focus, groot, stop_event)
 ├── fixtures/         per-fixture profiles
-├── tests/            hardware smoke tests (one per fixture type, plus test_all)
-├── tools/            interactive helpers (channel poker)
+├── tests/            hardware smoke tests
+├── tools/            interactive channel poker
 ├── docs/             patch table, screenshots
-├── manuals/          PDF user manuals for each fixture
+├── manuals/          PDF fixture manuals
+├── state/            layout.json (tracked) + patterns.json (gitignored, user content)
+├── web/              React + Vite + Tailwind front-end
+│   ├── src/pages/    Controls, Builder, Viz, Editor
+│   ├── src/components/  Layout, Button, Slider, Toast, Section
+│   ├── src/lib/      api.ts, useLiveState.ts, types.ts, utils.ts
+│   └── dist/         (gitignored — output of `npm run build`)
 ├── pyproject.toml
 └── uv.lock
 ```

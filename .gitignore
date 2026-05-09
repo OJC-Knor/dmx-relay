@@ -9,3 +9,10 @@ wheels/
 # Virtual environments
 .venv
 /state/patterns.json
+
+# React app
+web/node_modules
+web/dist
+web/*.tsbuildinfo
+web/vite.config.d.ts
+web/vite.config.js
