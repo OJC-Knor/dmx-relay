@@ -18,11 +18,12 @@ Restart=on-failure
 RestartSec=5
 TimeoutStopSec=10
 
-# Light hardening
+# Light hardening — ProtectSystem=full makes /usr, /boot, /efi read-only
+# but leaves the service free to write anywhere under its own home
+# (state/, patterns.json, uv cache, npm cache, build artifacts).
 NoNewPrivileges=yes
-ProtectSystem=strict
-ReadWritePaths=/opt/soos-lights/state /opt/soos-lights/.cache
-ProtectHome=yes
+ProtectSystem=full
+ProtectHome=no
 PrivateTmp=yes
 
 [Install]
