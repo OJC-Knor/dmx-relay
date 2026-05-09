@@ -427,18 +427,32 @@ def _spawn_pattern(name: str, pattern: dict) -> None:
     _scene_thread.start()
 
 
+# Named position presets used by head .pos tracks.
+# (pan, tilt) — both 0..255, with 128 the centre of each axis.
+POSITIONS: dict[str, tuple[int, int]] = {
+    "center":     (128, 128),
+    "up":         (128, 64),
+    "down":       (128, 192),
+    "left":       (64, 128),
+    "right":      (192, 128),
+    "up-left":    (64, 64),
+    "up-right":   (192, 64),
+    "down-left":  (64, 192),
+    "down-right": (192, 192),
+}
+
+
 def _play_pattern_loop(rig: Rig, stop: threading.Event, pattern: dict) -> None:
     """Step through a multi-fixture pattern indefinitely.
 
-    Each track is keyed by fixture id (tripar-N, pinspot-N, spotlight,
-    focus-N, groot-N, atomic, fog) and holds an array of [r,g,b] cells.
-    The player normalises the colour per fixture type:
-      - tripar    : color(r,g,b)
-      - pinspot   : dim(max(r,g,b))
-      - spotlight : set(any)
-      - focus/groot head: dim(max), shutter open, color held at default
-      - atomic    : intensity(max), default flash params if non-zero
-      - fog       : output(max)
+    Track keys:
+      - tripar-N, pinspot-N, spotlight, atomic, fog: RGB cells
+      - focus-N, groot-N: RGB cells (the head's main colour row)
+      - focus-N.gobo:  gobo-name string cells (FocusSpotTwo)
+      - focus-N.pos / groot-N.pos: POSITIONS-name cells
+
+    Cells are RGB triples for colour rows, strings for gobo/pos rows
+    (the JSON serialiser carries them as-is). null/None = no change.
     """
     tracks = pattern.get("tracks", {})
     step_ms = max(20, int(pattern.get("step_ms", 200)))
@@ -458,9 +472,9 @@ def _play_pattern_loop(rig: Rig, stop: threading.Event, pattern: dict) -> None:
         fmap[f"pinspot-{i + 1}"] = ("pinspot", p)
     fmap["spotlight"] = ("spotlight", rig.spotlight)
     for i, h in enumerate(rig.focus):
-        fmap[f"focus-{i + 1}"] = ("head", h)
+        fmap[f"focus-{i + 1}"] = ("focus", h)
     for i, h in enumerate(rig.groot):
-        fmap[f"groot-{i + 1}"] = ("head", h)
+        fmap[f"groot-{i + 1}"] = ("groot", h)
     fmap["atomic"] = ("atomic", rig.atomic)
     fmap["fog"] = ("fog", rig.fog)
 
@@ -474,28 +488,67 @@ def _play_pattern_loop(rig: Rig, stop: threading.Event, pattern: dict) -> None:
     step = 0
     period = step_ms / 1000.0
     while not stop.is_set():
-        for fid, cells in tracks.items():
+        for tid, cells in tracks.items():
             if not cells:
                 continue
+            cell = cells[step % len(cells)]
+            if cell is None:
+                continue
+
+            # decode the track id into (fixture_id, sub) — e.g.
+            #   "focus-1"      -> ("focus-1", None)         colour row
+            #   "focus-1.gobo" -> ("focus-1", "gobo")
+            #   "groot-2.pos"  -> ("groot-2", "pos")
+            if "." in tid:
+                fid, sub = tid.rsplit(".", 1)
+            else:
+                fid, sub = tid, None
+
             entry = fmap.get(fid)
             if entry is None:
                 continue
             kind, fixture = entry
-            r, g, b = cells[step % len(cells)]
-            _apply_cell(kind, fixture, r, g, b)
+            _apply_cell(kind, fixture, sub, cell)
         if stop.wait(period):
             return
         step += 1
 
 
-def _apply_cell(kind: str, fixture, r: int, g: int, b: int) -> None:
+def _apply_cell(kind: str, fixture, sub: str | None, cell) -> None:
+    """Apply one cell value to a fixture.
+
+    Colour rows receive an [r, g, b] list; sub-rows receive a string
+    (gobo name or position name).
+    """
+    # ---- gobo / position sub-rows on heads ----
+    if sub == "gobo":
+        if isinstance(cell, str):
+            try:
+                fixture.gobo(cell)
+            except (AttributeError, ValueError):
+                pass
+        return
+    if sub == "pos":
+        if isinstance(cell, str) and cell in POSITIONS:
+            pan, tilt = POSITIONS[cell]
+            try:
+                fixture.position(pan, tilt)
+            except AttributeError:
+                pass
+        return
+
+    # ---- colour rows ----
+    if not isinstance(cell, (list, tuple)) or len(cell) < 3:
+        return
+    r, g, b = int(cell[0]), int(cell[1]), int(cell[2])
+
     if kind == "tripar":
         fixture.color(r, g, b)
     elif kind == "pinspot":
         fixture.dim(max(r, g, b))
     elif kind == "spotlight":
         fixture.set(bool(r or g or b))
-    elif kind == "head":
+    elif kind in ("focus", "groot"):
         fixture.dim(max(r, g, b))
     elif kind == "atomic":
         v = max(r, g, b)

@@ -8,10 +8,12 @@ import { useToast } from "@/components/Toast";
 import {
   deletePattern, fetchPatterns, fetchRig, fetchScenes, playScene, savePattern, stopScene,
 } from "@/lib/api";
-import type { FixtureMeta, Pattern } from "@/lib/types";
+import type { FixtureMeta, Pattern, RgbCell } from "@/lib/types";
 import { cn, rgbToHex } from "@/lib/utils";
 
-const PALETTE: { name: string; rgb: [number, number, number] | null }[] = [
+// ----- palettes & track-row registry -----
+
+const COLOR_PALETTE: { name: string; rgb: RgbCell | null }[] = [
   { name: "off",    rgb: null },
   { name: "red",    rgb: [255, 30, 30] },
   { name: "orange", rgb: [255, 130, 0] },
@@ -24,6 +26,30 @@ const PALETTE: { name: string; rgb: [number, number, number] | null }[] = [
   { name: "white",  rgb: [255, 255, 255] },
 ];
 
+const GOBOS = [
+  { name: "off",   value: null },
+  { name: "open",  value: "open" },
+  { name: "1",     value: "gobo1" },
+  { name: "2",     value: "gobo2" },
+  { name: "3",     value: "gobo3" },
+  { name: "4",     value: "gobo4" },
+  { name: "5",     value: "gobo5" },
+  { name: "6",     value: "gobo6" },
+];
+
+const POSITIONS = [
+  { name: "off",         value: null,         dot: { x: 0.5, y: 0.5 } },
+  { name: "center",      value: "center",     dot: { x: 0.5, y: 0.5 } },
+  { name: "up",          value: "up",         dot: { x: 0.5, y: 0.2 } },
+  { name: "down",        value: "down",       dot: { x: 0.5, y: 0.8 } },
+  { name: "left",        value: "left",       dot: { x: 0.2, y: 0.5 } },
+  { name: "right",       value: "right",      dot: { x: 0.8, y: 0.5 } },
+  { name: "up-left",     value: "up-left",    dot: { x: 0.2, y: 0.2 } },
+  { name: "up-right",    value: "up-right",   dot: { x: 0.8, y: 0.2 } },
+  { name: "down-left",   value: "down-left",  dot: { x: 0.2, y: 0.8 } },
+  { name: "down-right",  value: "down-right", dot: { x: 0.8, y: 0.8 } },
+];
+
 const TYPE_GROUPS: { type: FixtureMeta["type"]; label: string; rgb: boolean }[] = [
   { type: "tripar",    label: "Tripars",       rgb: true },
   { type: "pinspot",   label: "Pinspots",      rgb: false },
@@ -34,22 +60,52 @@ const TYPE_GROUPS: { type: FixtureMeta["type"]; label: string; rgb: boolean }[] 
   { type: "fog",       label: "Fog",           rgb: false },
 ];
 
-type Cell = [number, number, number] | null;
-type Tracks = Record<string, Cell[]>;
+// each "row" the grid renders is one of these:
+type RowKind = "color" | "gobo" | "pos";
+type Row = { trackId: string; label: string; kind: RowKind; rgbRow: boolean };
 
-function blank(steps: number, fixtures: FixtureMeta[]): Tracks {
-  return Object.fromEntries(fixtures.map((f) => [f.id, Array.from({ length: steps }, () => null)]));
+// expand a fixture into its track rows. For Tripars/Pinspots/etc:
+// just one colour row. For Focus heads: color + gobo + pos. For Groot:
+// color + pos (no gobo wheel exposed yet).
+function fixtureRows(f: FixtureMeta): Row[] {
+  if (f.type === "focus") {
+    return [
+      { trackId: f.id,            label: `${f.label} colour`, kind: "color", rgbRow: false },
+      { trackId: `${f.id}.gobo`,  label: `${f.label} gobo`,   kind: "gobo",  rgbRow: false },
+      { trackId: `${f.id}.pos`,   label: `${f.label} pos`,    kind: "pos",   rgbRow: false },
+    ];
+  }
+  if (f.type === "groot") {
+    return [
+      { trackId: f.id,           label: `${f.label} colour`, kind: "color", rgbRow: false },
+      { trackId: `${f.id}.pos`,  label: `${f.label} pos`,    kind: "pos",   rgbRow: false },
+    ];
+  }
+  return [
+    { trackId: f.id, label: f.label, kind: "color", rgbRow: f.type === "tripar" },
+  ];
 }
 
-function reshape(tracks: Tracks, steps: number, fixtures: FixtureMeta[]): Tracks {
+// ----- track storage -----
+
+type Cell = RgbCell | string | null;
+type Tracks = Record<string, Cell[]>;
+
+function blank(steps: number, rows: Row[]): Tracks {
+  return Object.fromEntries(rows.map((r) => [r.trackId, Array.from({ length: steps }, () => null)]));
+}
+
+function reshape(tracks: Tracks, steps: number, rows: Row[]): Tracks {
   const out: Tracks = {};
-  for (const f of fixtures) {
-    const arr = (tracks[f.id] ?? []).slice(0, steps);
+  for (const r of rows) {
+    const arr = (tracks[r.trackId] ?? []).slice(0, steps);
     while (arr.length < steps) arr.push(null);
-    out[f.id] = arr;
+    out[r.trackId] = arr as Cell[];
   }
   return out;
 }
+
+// ----- component -----
 
 export default function Builder() {
   const toast = useToast();
@@ -57,25 +113,30 @@ export default function Builder() {
 
   const rig = useQuery({ queryKey: ["rig"], queryFn: fetchRig });
   const fixtures = rig.data?.fixtures ?? [];
+  const allRows = useMemo<Row[]>(() => fixtures.flatMap(fixtureRows), [fixtures]);
 
   const [name, setName] = useState("");
   const [steps, setSteps] = useState(16);
   const [bpm, setBpm] = useState(120);
   const [tracks, setTracks] = useState<Tracks>({});
-  const [brushIdx, setBrushIdx] = useState(1);
-  const [customColor, setCustomColor] = useState<[number, number, number]>([255, 255, 255]);
+
+  const [colorIdx, setColorIdx] = useState(1);
+  const [customColor, setCustomColor] = useState<RgbCell>([255, 255, 255]);
   const [useCustom, setUseCustom] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const [goboIdx, setGoboIdx] = useState(2);  // gobo1 by default
+  const [posIdx, setPosIdx] = useState(1);    // center by default
+
   const [enabledTypes, setEnabledTypes] = useState<Set<string>>(
     () => new Set(["tripar", "pinspot", "spotlight", "atomic", "focus", "groot", "fog"]),
   );
 
-  // initialise tracks once we know the fixture list
+  // initialise tracks once we know the rows
   useEffect(() => {
-    if (fixtures.length && Object.keys(tracks).length === 0) {
-      setTracks(blank(steps, fixtures));
+    if (allRows.length && Object.keys(tracks).length === 0) {
+      setTracks(blank(steps, allRows));
     }
-  }, [fixtures, steps, tracks]);
+  }, [allRows, steps, tracks]);
 
   const stepMs = useMemo(() => Math.round(60_000 / (bpm * 4)), [bpm]);
 
@@ -83,7 +144,6 @@ export default function Builder() {
   const running = scenes.data?.running ?? null;
   const playingThis = !!running && running === `pattern:${name || "__live"}`;
 
-  // local playhead (cosmetic)
   const [playCol, setPlayCol] = useState(-1);
   const playTimer = useRef<number | null>(null);
   useEffect(() => {
@@ -119,7 +179,7 @@ export default function Builder() {
   const onResize = (newSteps: number) => {
     const n = Math.max(2, Math.min(64, newSteps));
     setSteps(n);
-    setTracks((t) => reshape(t, n, fixtures));
+    setTracks((t) => reshape(t, n, allRows));
   };
 
   const packPattern = (): Pattern => ({
@@ -127,10 +187,7 @@ export default function Builder() {
     bpm,
     steps,
     tracks: Object.fromEntries(
-      Object.entries(tracks).map(([id, cells]) => [
-        id,
-        cells.map((c) => (c ?? [0, 0, 0]) as [number, number, number]),
-      ]),
+      Object.entries(tracks).map(([id, cells]) => [id, cells]),
     ),
   });
 
@@ -156,7 +213,7 @@ export default function Builder() {
 
   const clear = () => {
     if (!confirm("Clear the whole pattern?")) return;
-    setTracks(blank(steps, fixtures));
+    setTracks(blank(steps, allRows));
   };
 
   const loadPattern = (n: string) => {
@@ -166,10 +223,17 @@ export default function Builder() {
     setSteps(p.steps);
     setBpm(p.bpm);
     const next: Tracks = {};
-    for (const f of fixtures) {
-      const arr = (p.tracks[f.id] ?? []).slice(0, p.steps);
-      next[f.id] = arr.map((c) => ((c[0] || c[1] || c[2]) ? c : null));
-      while (next[f.id].length < p.steps) next[f.id].push(null);
+    for (const r of allRows) {
+      const arr = (p.tracks[r.trackId] ?? []).slice(0, p.steps);
+      next[r.trackId] = arr.map((c: unknown) => {
+        if (c == null) return null;
+        if (Array.isArray(c)) {
+          const [r0, g0, b0] = c as number[];
+          return (r0 || g0 || b0) ? ([r0, g0, b0] as RgbCell) : null;
+        }
+        return c as string;  // already a name
+      });
+      while (next[r.trackId].length < p.steps) next[r.trackId].push(null);
     }
     setTracks(next);
   };
@@ -177,27 +241,35 @@ export default function Builder() {
   // ----- painting -----
 
   const dragging = useRef(false);
-  const currentBrush = (): Cell => {
-    if (useCustom) return [...customColor];
-    return PALETTE[brushIdx].rgb ? [...PALETTE[brushIdx].rgb!] : null;
+  const brushFor = (kind: RowKind): Cell => {
+    if (kind === "color") {
+      if (useCustom) return [...customColor] as RgbCell;
+      return COLOR_PALETTE[colorIdx].rgb ? ([...(COLOR_PALETTE[colorIdx].rgb as RgbCell)] as RgbCell) : null;
+    }
+    if (kind === "gobo") return GOBOS[goboIdx].value;
+    /* pos */            return POSITIONS[posIdx].value;
   };
 
-  const paint = (id: string, col: number) => {
-    const c = currentBrush();
+  const paint = (row: Row, col: number) => {
+    const c = brushFor(row.kind);
     setTracks((t) => {
-      const prev = t[id];
+      const prev = t[row.trackId];
       if (!prev) return t;
       const nextRow = prev.slice();
       nextRow[col] = c;
-      return { ...t, [id]: nextRow };
+      return { ...t, [row.trackId]: nextRow };
     });
   };
 
-  // group fixtures
-  const groups = TYPE_GROUPS.map((g) => ({
+  // group rows by fixture type for header dividers + filtering
+  const byType = TYPE_GROUPS.map((g) => ({
     ...g,
-    fixtures: fixtures.filter((f) => f.type === g.type),
-  })).filter((g) => g.fixtures.length > 0);
+    rows: fixtures
+      .filter((f) => f.type === g.type)
+      .flatMap(fixtureRows),
+  })).filter((g) => g.rows.length > 0);
+
+  // ----- render -----
 
   return (
     <>
@@ -272,51 +344,99 @@ export default function Builder() {
         </div>
       </Section>
 
-      {/* Brush */}
-      <Section title="Brush">
-        <div className="flex flex-wrap items-center gap-2">
-          {PALETTE.map((c, i) => (
+      {/* Brushes */}
+      <Section title="Brushes" hint={<span>painting auto-uses the brush matching each row</span>}>
+        <div className="space-y-3">
+          <BrushRow label="Color">
+            {COLOR_PALETTE.map((c, i) => (
+              <button
+                key={c.name}
+                title={c.name}
+                onClick={() => { setColorIdx(i); setUseCustom(false); }}
+                className={cn(
+                  "h-8 w-8 rounded-md border-2 transition relative",
+                  !useCustom && i === colorIdx ? "border-text scale-110" : "border-line",
+                  c.name === "off" && "bg-surface2",
+                )}
+                style={c.rgb ? { background: `rgb(${c.rgb.join(",")})` } : undefined}
+              >
+                {c.name === "off" && (
+                  <span className="absolute inset-0 flex items-center justify-center">
+                    <span className="block h-full w-0.5 -rotate-45 bg-danger/80" />
+                  </span>
+                )}
+              </button>
+            ))}
+            <span className="ml-2 h-6 w-px bg-line" />
             <button
-              key={c.name}
-              title={c.name}
-              onClick={() => { setBrushIdx(i); setUseCustom(false); }}
+              onClick={() => { setShowPicker((v) => !v); setUseCustom(true); }}
+              title="Custom colour"
               className={cn(
-                "h-9 w-9 rounded-md border-2 transition relative",
-                !useCustom && i === brushIdx ? "border-text scale-110" : "border-line",
-                c.name === "off" && "bg-surface2",
+                "h-8 w-8 rounded-md border-2 transition",
+                useCustom ? "border-text scale-110" : "border-line",
               )}
-              style={c.rgb ? { background: `rgb(${c.rgb.join(",")})` } : undefined}
-            >
-              {c.name === "off" && (
-                <span className="absolute inset-0 flex items-center justify-center">
-                  <span className="block h-full w-0.5 -rotate-45 bg-danger/80" />
-                </span>
-              )}
-            </button>
-          ))}
-          <span className="ml-2 h-6 w-px bg-line" />
-          <button
-            onClick={() => { setShowPicker((v) => !v); setUseCustom(true); }}
-            title="Custom colour"
-            className={cn(
-              "h-9 w-9 rounded-md border-2 transition",
-              useCustom ? "border-text scale-110" : "border-line",
+              style={{ background: `rgb(${customColor.join(",")})` }}
+            />
+            {showPicker && (
+              <div className="ml-2 rounded-xl border border-line bg-surface p-2">
+                <HexColorPicker
+                  color={rgbToHex(...customColor)}
+                  onChange={(hex) => {
+                    const v = parseInt(hex.replace("#", ""), 16);
+                    setCustomColor([(v >> 16) & 255, (v >> 8) & 255, v & 255]);
+                    setUseCustom(true);
+                  }}
+                  style={{ width: 200, height: 130 }}
+                />
+              </div>
             )}
-            style={{ background: `rgb(${customColor.join(",")})` }}
-          />
-          {showPicker && (
-            <div className="ml-2 rounded-xl border border-line bg-surface p-2">
-              <HexColorPicker
-                color={rgbToHex(...customColor)}
-                onChange={(hex) => {
-                  const v = parseInt(hex.replace("#", ""), 16);
-                  setCustomColor([(v >> 16) & 255, (v >> 8) & 255, v & 255]);
-                  setUseCustom(true);
-                }}
-                style={{ width: 200, height: 130 }}
-              />
-            </div>
-          )}
+          </BrushRow>
+
+          <BrushRow label="Gobo">
+            {GOBOS.map((g, i) => (
+              <button
+                key={g.name}
+                title={g.value ?? "off"}
+                onClick={() => setGoboIdx(i)}
+                className={cn(
+                  "h-8 min-w-[2.25rem] rounded-md border-2 px-2 text-xs font-semibold transition",
+                  i === goboIdx ? "border-text bg-surface2 scale-105" : "border-line bg-bg text-muted",
+                  g.value === null && "italic",
+                )}
+              >
+                {g.name}
+              </button>
+            ))}
+          </BrushRow>
+
+          <BrushRow label="Position">
+            {POSITIONS.map((p, i) => (
+              <button
+                key={p.name}
+                title={p.value ?? "off"}
+                onClick={() => setPosIdx(i)}
+                className={cn(
+                  "relative h-8 w-8 rounded-md border-2 transition",
+                  i === posIdx ? "border-text scale-110" : "border-line",
+                  "bg-surface2",
+                )}
+              >
+                {p.value !== null && (
+                  <span
+                    className="absolute h-1.5 w-1.5 rounded-full bg-accent"
+                    style={{
+                      left: `${p.dot.x * 100}%`,
+                      top:  `${p.dot.y * 100}%`,
+                      transform: "translate(-50%, -50%)",
+                    }}
+                  />
+                )}
+                {p.value === null && (
+                  <span className="absolute inset-0 flex items-center justify-center text-[10px] italic text-muted">off</span>
+                )}
+              </button>
+            ))}
+          </BrushRow>
         </div>
       </Section>
 
@@ -356,7 +476,7 @@ export default function Builder() {
           <div className="inline-block min-w-full rounded-lg border border-line bg-surface p-3">
             {/* step header */}
             <div className="mb-1 flex">
-              <div className="w-12" />
+              <div className="w-24" />
               {Array.from({ length: steps }).map((_, s) => (
                 <div
                   key={s}
@@ -370,60 +490,30 @@ export default function Builder() {
               ))}
             </div>
 
-            {groups.filter((g) => enabledTypes.has(g.type)).map((g) => (
+            {byType.filter((g) => enabledTypes.has(g.type)).map((g) => (
               <div key={g.type} className="mt-2">
                 <div className="mb-1 mt-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-muted">
                   <span className="h-px flex-1 bg-line/60" />
                   <span>{g.label}</span>
                   <span className="h-px flex-1 bg-line/60" />
                 </div>
-                {g.fixtures.map((f) => (
-                  <div key={f.id} className="flex">
-                    <div className="flex w-12 items-center justify-end pr-2 text-[11px] tabular-nums text-muted">
-                      {f.label}
-                    </div>
-                    {Array.from({ length: steps }).map((_, s) => {
-                      const c = tracks[f.id]?.[s];
-                      const isPlaying = playCol === s;
-                      const beat = s % 4 === 0;
-                      // For non-RGB rows, render the cell as a brightness-only
-                      // grey so the user can see "this fixture is on" without
-                      // misleading colour info.
-                      const fill = !c
-                        ? undefined
-                        : g.rgb
-                          ? `rgb(${c.join(",")})`
-                          : (() => {
-                              const v = Math.max(c[0], c[1], c[2]);
-                              return `rgb(${v}, ${v}, ${v})`;
-                            })();
-                      return (
-                        <button
-                          key={s}
-                          onPointerDown={(e) => {
-                            e.preventDefault();
-                            (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
-                            dragging.current = true;
-                            paint(f.id, s);
-                          }}
-                          onPointerEnter={() => { if (dragging.current) paint(f.id, s); }}
-                          onPointerUp={() => { dragging.current = false; }}
-                          onPointerCancel={() => { dragging.current = false; }}
-                          className={cn(
-                            "m-px h-7 w-6 rounded border touch-none",
-                            beat ? "border-accent/40" : "border-line",
-                            isPlaying && "ring-2 ring-accent ring-inset",
-                          )}
-                          style={fill ? { background: fill } : { backgroundColor: "#1f1f25" }}
-                        />
-                      );
-                    })}
-                  </div>
+                {g.rows.map((row) => (
+                  <RowEl
+                    key={row.trackId}
+                    row={row}
+                    rgbDisplay={g.rgb && row.kind === "color"}
+                    cells={tracks[row.trackId] ?? []}
+                    steps={steps}
+                    playCol={playCol}
+                    onPaintStart={(s) => { dragging.current = true; paint(row, s); }}
+                    onPaintEnter={(s) => { if (dragging.current) paint(row, s); }}
+                  />
                 ))}
               </div>
             ))}
           </div>
         </div>
+
         <div className="mt-3 text-[11px] text-muted">
           {(stepMs * steps / 1000).toFixed(2)}s loop ·
           {" "}
@@ -434,6 +524,17 @@ export default function Builder() {
   );
 }
 
+// ----- helpers -----
+
+function BrushRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="w-16 text-[10px] uppercase tracking-[0.12em] text-muted">{label}</span>
+      {children}
+    </div>
+  );
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
@@ -441,4 +542,88 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </div>
   );
+}
+
+function RowEl({
+  row, rgbDisplay, cells, steps, playCol, onPaintStart, onPaintEnter,
+}: {
+  row: Row;
+  rgbDisplay: boolean;          // tripar gets full colour, others get greyscale
+  cells: Cell[];
+  steps: number;
+  playCol: number;
+  onPaintStart: (s: number) => void;
+  onPaintEnter: (s: number) => void;
+}) {
+  return (
+    <div className="flex items-center">
+      <div className="w-24 truncate pr-2 text-right text-[11px] text-muted">{row.label}</div>
+      {Array.from({ length: steps }).map((_, s) => {
+        const c = cells[s];
+        const isPlaying = playCol === s;
+        const beat = s % 4 === 0;
+        const fill = cellFill(row.kind, c, rgbDisplay);
+        return (
+          <button
+            key={s}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
+              onPaintStart(s);
+            }}
+            onPointerEnter={() => onPaintEnter(s)}
+            className={cn(
+              "relative m-px h-7 w-6 rounded border touch-none",
+              beat ? "border-accent/40" : "border-line",
+              isPlaying && "ring-2 ring-accent ring-inset",
+            )}
+            style={fill.bg ? { background: fill.bg } : { backgroundColor: "#1f1f25" }}
+          >
+            {fill.label && (
+              <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold leading-none text-black/80">
+                {fill.label}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function cellFill(kind: RowKind, c: Cell, rgbDisplay: boolean): { bg?: string; label?: string } {
+  if (c == null) return {};
+  if (kind === "color") {
+    const arr = c as RgbCell;
+    if (rgbDisplay) return { bg: `rgb(${arr.join(",")})` };
+    const v = Math.max(arr[0], arr[1], arr[2]);
+    return { bg: `rgb(${v}, ${v}, ${v})` };
+  }
+  if (kind === "gobo") {
+    const name = c as string;
+    return {
+      bg: "rgb(140, 200, 255)",
+      label: name === "open" ? "○" : name.replace(/^gobo/, ""),
+    };
+  }
+  // pos
+  return {
+    bg: "rgb(108, 142, 255)",
+    label: posSymbol(c as string),
+  };
+}
+
+function posSymbol(name: string): string {
+  switch (name) {
+    case "center":     return "●";
+    case "up":         return "↑";
+    case "down":       return "↓";
+    case "left":       return "←";
+    case "right":      return "→";
+    case "up-left":    return "↖";
+    case "up-right":   return "↗";
+    case "down-left":  return "↙";
+    case "down-right": return "↘";
+    default:           return "•";
+  }
 }

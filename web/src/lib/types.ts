@@ -64,11 +64,17 @@ export type LiveState = {
   fog: number;
 };
 
+// Cells are per-step values. RGB triples for colour rows;
+// strings (or null) for gobo / position sub-rows.
+export type RgbCell = [number, number, number];
+export type StrCell = string | null;
+export type AnyCell = RgbCell | StrCell;
+
 export type Pattern = {
   step_ms: number;
   bpm: number;
   steps: number;
-  tracks: Record<string, [number, number, number][]>;  // tripar-id -> per-step rgb
+  tracks: Record<string, AnyCell[]>;
 };
 
 export type PatternsResponse = { patterns: Record<string, Pattern> };
