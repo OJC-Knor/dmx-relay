@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from beat import BeatClock
 from dmx import Universe
 from rig import PORT, Rig, build_rig, fixture_ids
-from scenes import SCENES, SCENE_BY_KEY
+from scenes import SCENES, SCENE_BY_KEY, set_clock
 from vj import EFFECTS, HOLDS, RATES, VJ
 
 ROOT = Path(__file__).parent
@@ -47,6 +47,7 @@ _fog_lock = threading.Lock()
 _revs = {"layout": 0, "patterns": 0}
 # Shared tempo (tap / mic) and the VJ effects layer on top of the scenes.
 _clock = BeatClock()
+set_clock(_clock)        # scenes follow the shared tempo too
 _vj: VJ | None = None
 _queued_scene: str | None = None          # scene waiting for the next bar
 _queued_timer: threading.Timer | None = None

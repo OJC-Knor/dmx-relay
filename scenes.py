@@ -17,11 +17,58 @@ import threading
 import time
 from typing import Callable, Literal
 
+from beat import BeatClock
 from layout import head_order_lr, tripar_groups
 from rig import Rig
 
 Scene = Callable[[Rig, threading.Event], None]
 Tempo = Literal["slow", "medium", "fast", "insane"]
+
+# ----- musical time -----
+# Scenes run on the shared beat clock (beat.py), so they follow the tapped
+# BPM. Musical time is "seconds at 120 BPM" (0.5 per beat): at 120 BPM a
+# scene looks exactly as designed, at 128 it runs 7 % faster, and stepped
+# changes land on beat divisions via Every().
+
+REF_BPM = 120.0
+_clock: BeatClock | None = None
+
+
+def set_clock(clock: BeatClock) -> None:
+    global _clock
+    _clock = clock
+
+
+def beats() -> float:
+    """Current beat position; beat 0, 4, 8 … are downbeats."""
+    return _clock.beats() if _clock else time.monotonic() * REF_BPM / 60.0
+
+
+def mtime() -> float:
+    """Musical seconds: equals wall seconds at 120 BPM."""
+    return beats() * 60.0 / REF_BPM
+
+
+def msleep(secs: float) -> None:
+    """Sleep `secs` musical seconds (shorter at faster tempos)."""
+    bpm = _clock.bpm if _clock else REF_BPM
+    time.sleep(secs * REF_BPM / bpm)
+
+
+class Every:
+    """True once per grid slot of `n_beats` (0.25 = every 16th note, 4 = every bar)."""
+
+    def __init__(self, n_beats: float) -> None:
+        self.n = n_beats
+        self._slot: int | None = None
+
+    def __call__(self) -> bool:
+        slot = math.floor(beats() / self.n)
+        if slot == self._slot:
+            return False
+        self._slot = slot
+        return True
+
 
 # ----- helpers -----
 
@@ -75,11 +122,11 @@ def scene_atmosphere(rig: Rig, stop: threading.Event) -> None:
             h.position(128, 180)
             h.color("red")
             h.dim(60)
-        time.sleep(fade_secs / steps)
+        msleep(fade_secs / steps)
 
     # gentle pulse on the blue
     while not stop.is_set():
-        v = 30 + int(20 * math.sin(time.time() * 0.4))
+        v = 30 + int(20 * math.sin(mtime() * 0.4))
         for t in tripars:
             t.color(0, v, 100 + v)
         time.sleep(1 / 30)
@@ -96,7 +143,7 @@ def scene_sunrise(rig: Rig, stop: threading.Event) -> None:
                (255, 200, 80), (255, 100, 50), (200, 30, 80)]
 
     while not stop.is_set():
-        t_now = time.time()
+        t_now = mtime()
         idx = int((t_now * 0.4) % len(palette))
         nxt = (idx + 1) % len(palette)
         f = (t_now * 0.4) % 1
@@ -126,16 +173,15 @@ def scene_chase(rig: Rig, stop: threading.Event) -> None:
     direction = 1
     bg = (10, 0, 30)
     fg = (0, 200, 255)
-    last_step = time.time()
+    step = Every(0.25)              # 16th notes
 
     while not stop.is_set():
-        if time.time() - last_step > 0.12:
+        if step():
             for i, t in enumerate(tripars):
                 t.color(*(fg if i == chase_idx else bg))
             chase_idx += direction
             if chase_idx >= 11 or chase_idx <= 0:
                 direction *= -1
-            last_step = time.time()
         time.sleep(1 / 60)
 
 
@@ -147,15 +193,15 @@ def scene_rainbow(rig: Rig, stop: threading.Event) -> None:
         h.dim(255)
 
     color_cycle = ["red", "yellow", "green", "cyan", "blue", "pink"]
-    last_color = time.time()
+    next_colour = Every(4)          # heads change colour each bar
     ci = 0
 
     while not stop.is_set():
-        phase = time.time() * 0.6
+        phase = mtime() * 0.6
         for i, t in enumerate(tripars):
             t.color(*hsv(phase + i / 12.0))
 
-        if time.time() - last_color > 1.5:
+        if next_colour():
             ci = (ci + 1) % len(color_cycle)
             for h in focus:
                 try: h.color(color_cycle[ci])
@@ -163,9 +209,8 @@ def scene_rainbow(rig: Rig, stop: threading.Event) -> None:
             for h in groot:
                 try: h.color(color_cycle[ci])
                 except ValueError: h.color("white")
-            last_color = time.time()
 
-        t_now = time.time()
+        t_now = mtime()
         pan = int(128 + 70 * math.cos(t_now * 0.8))
         tilt = int(128 + 50 * math.sin(t_now * 0.8))
         for h in focus + groot:
@@ -174,27 +219,27 @@ def scene_rainbow(rig: Rig, stop: threading.Event) -> None:
 
 
 def scene_buildup(rig: Rig, stop: threading.Event) -> None:
-    """Cyclic energy ramp: builds up over 15s then resets, on repeat."""
+    """Cyclic energy ramp over an 8-bar phrase, then resets, on repeat."""
     tripars, focus, groot = rig.tripars, rig.focus, rig.groot
     pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     for h in focus + groot:
         h.dim(255)
-    cycle_secs = 15.0
+    cycle_secs = 16.0   # 32 beats = one 8-bar phrase
 
     while not stop.is_set():
-        start = time.time()
+        start = math.floor(mtime() / cycle_secs) * cycle_secs   # line up with the phrase
         while not stop.is_set():
-            elapsed = time.time() - start
-            if elapsed >= cycle_secs:
+            elapsed = mtime() - start
+            if not 0 <= elapsed < cycle_secs:   # phrase done, or tempo resynced
                 break
             progress = elapsed / cycle_secs
             speed = 0.5 + progress * 4.0
 
             for i, t in enumerate(tripars):
-                t.color(*hsv(time.time() * speed + i / 12.0))
+                t.color(*hsv(mtime() * speed + i / 12.0))
 
-            sweep = math.sin(time.time() * speed * 0.5)
+            sweep = math.sin(mtime() * speed * 0.5)
             pan = int(128 + 60 * sweep)
             tilt = int(128 - 40 * sweep)
             for h in focus + groot:
@@ -212,8 +257,8 @@ def scene_drop(rig: Rig, stop: threading.Event) -> None:
         h.shutter("strobe")
 
     while not stop.is_set():
-        t_now = time.time()
-        v = int(127 + 128 * math.sin(t_now * 6))
+        t_now = mtime()
+        v = int(127 + 128 * math.cos(t_now * 4 * math.pi))   # one pulse per beat, peak on the beat
         for t in tripars:
             t.color(v, v, v)
         # pinspots track the same pulse
@@ -241,7 +286,7 @@ def scene_calm(rig: Rig, stop: threading.Event) -> None:
         h.dim(150)
 
     while not stop.is_set():
-        t_now = time.time()
+        t_now = mtime()
         v = 100 + int(60 * math.sin(t_now * 0.8))
         for i, t in enumerate(tripars):
             offset = math.sin(t_now * 0.6 + i * 0.5)
@@ -271,23 +316,22 @@ def scene_disco(rig: Rig, stop: threading.Event) -> None:
 
     head_colors_focus = ["red", "blue", "green", "yellow"]
     head_colors_groot = ["magenta", "cyan", "yellow"]
-    last_color_change = time.time()
+    swap = Every(2)                 # heads rotate colours every 2 beats
 
     while not stop.is_set():
-        phase = time.time() * 0.9
+        phase = mtime() * 0.9
         for i, t in enumerate(tripars):
             t.color(*hsv(phase + i / 6.0))
 
-        if time.time() - last_color_change > 0.8:
+        if swap():
             head_colors_focus = head_colors_focus[1:] + head_colors_focus[:1]
             head_colors_groot = head_colors_groot[1:] + head_colors_groot[:1]
             for h, c in zip(focus, head_colors_focus):
                 h.color(c)
             for h, c in zip(groot, head_colors_groot):
                 h.color(c)
-            last_color_change = time.time()
 
-        t_now = time.time()
+        t_now = mtime()
         for i, h in enumerate(focus + groot):
             pan = int(128 + 80 * math.sin(t_now * 1.0 + i * 0.9))
             tilt = int(128 + 60 * math.cos(t_now * 0.7 + i * 0.6))
@@ -306,18 +350,18 @@ def scene_climax(rig: Rig, stop: threading.Event) -> None:
         h.dim(255)
 
     while not stop.is_set():
-        h_phase = (time.time() * 1.5) % 1
+        h_phase = (mtime() * 1.5) % 1
         col = hsv(h_phase)
         for t in tripars:
             t.color(*col)
-        idx = int(time.time() * 5) % 6
+        idx = int(beats() * 2) % 6     # head colour every 8th note
         for fh in focus:
             try: fh.color(["red", "green", "blue", "yellow", "pink", "white"][idx])
             except ValueError: fh.color("white")
         for gh in groot:
             try: gh.color(["red", "green", "blue", "yellow", "magenta", "cyan"][idx])
             except ValueError: gh.color("white")
-        t_now = time.time()
+        t_now = mtime()
         pan = int(128 + 110 * math.sin(t_now * 2.5))
         tilt = int(128 + 80 * math.cos(t_now * 2.0))
         for h_ in focus + groot:
@@ -342,7 +386,7 @@ def scene_fade(rig: Rig, stop: threading.Event) -> None:
             t.color(*c)
         for h in focus + groot:
             h.dim(int(180 * f))
-        time.sleep(fade_secs / steps)
+        msleep(fade_secs / steps)
 
     # hold dark
     for t in tripars:
@@ -374,9 +418,9 @@ def scene_beam_sweep(rig: Rig, stop: threading.Event) -> None:
     DOWN = 200
     CYCLE = 4.0  # seconds — full per-head cycle
 
-    start = time.time()
+    start = math.floor(mtime() / 2.0) * 2.0   # start on a bar line
     while not stop.is_set():
-        t_now = time.time() - start
+        t_now = mtime() - start
         for i, h in enumerate(heads):
             offset = (i * CYCLE) / len(heads)
             phase = ((t_now - offset) % CYCLE) / CYCLE
@@ -412,11 +456,10 @@ def scene_police(rig: Rig, stop: threading.Event) -> None:
         h.dim(255)
         h.shutter("open")
 
-    period = 0.18
     state = 0
-    last = time.time()
+    flip = Every(0.5)               # 8th notes
     while not stop.is_set():
-        if time.time() - last > period:
+        if flip():
             state = 1 - state
             color = (255, 0, 0) if state == 0 else (0, 0, 255)
             head_color = "red" if state == 0 else "blue"
@@ -427,7 +470,6 @@ def scene_police(rig: Rig, stop: threading.Event) -> None:
             # alternate pinspots between the two halves
             for i, p in enumerate(pinspots):
                 p.dim(255 if (i % 2) == state else 0)
-            last = time.time()
         time.sleep(1 / 60)
 
 
@@ -445,7 +487,7 @@ def scene_fire(rig: Rig, stop: threading.Event) -> None:
             r = random.randint(180, 255)
             g = random.randint(20, 90)
             t.color(r, g, 0)
-        t_now = time.time()
+        t_now = mtime()
         pan = int(128 + 30 * math.sin(t_now * 0.4))
         tilt = int(150 + 25 * math.sin(t_now * 0.3))
         for h in focus + groot:
@@ -464,7 +506,7 @@ def scene_ocean(rig: Rig, stop: threading.Event) -> None:
         h.color("blue"); h.dim(150)
 
     while not stop.is_set():
-        t_now = time.time()
+        t_now = mtime()
         for i, t in enumerate(tripars):
             wave = math.sin(t_now * 0.4 + i * 0.5)
             g = int(60 + 80 * (wave + 1) / 2)
@@ -493,17 +535,17 @@ def scene_sunset(rig: Rig, stop: threading.Event) -> None:
         (40, 50, 180),
         (10, 20, 80),
     ]
-    cycle_secs = 30.0
+    cycle_secs = 32.0   # 64 beats
 
     while not stop.is_set():
-        phase = (time.time() % cycle_secs) / cycle_secs
+        phase = (mtime() % cycle_secs) / cycle_secs
         idx = int(phase * len(palette)) % len(palette)
         nxt = (idx + 1) % len(palette)
         f = (phase * len(palette)) % 1
         c = lerp_color(palette[idx], palette[nxt], f)
         for t in tripars:
             t.color(*c)
-        t_now = time.time()
+        t_now = mtime()
         pan = int(128 + 60 * math.sin(t_now * 0.15))
         tilt = int(128 + 50 * math.cos(t_now * 0.12))
         for h in focus + groot:
@@ -526,10 +568,10 @@ def scene_wipe(rig: Rig, stop: threading.Event) -> None:
     bg = (0, 0, 0)
     pos = 0
     direction = 1
-    last_step = time.time()
+    step = Every(0.25)              # 16th notes
 
     while not stop.is_set():
-        if time.time() - last_step > 0.1:
+        if step():
             for i, t in enumerate(tripars):
                 lit = (direction > 0 and i <= pos) or (direction < 0 and i >= pos)
                 t.color(*(palette[color_idx] if lit else bg))
@@ -544,7 +586,6 @@ def scene_wipe(rig: Rig, stop: threading.Event) -> None:
                         h.color(head_names[color_idx])
                     except ValueError:
                         h.color("white")
-            last_step = time.time()
         time.sleep(1 / 60)
 
 
@@ -591,19 +632,18 @@ def scene_evenodd(rig: Rig, stop: threading.Event) -> None:
         ((255, 100, 0), (100, 0, 255)),   # orange / purple
     ]
     pi = 0
-    last_swap = time.time()
+    swap = Every(2)
     swap_state = 0
 
     while not stop.is_set():
-        if time.time() - last_swap > 1.4:
+        if swap():
             swap_state = 1 - swap_state
             if swap_state == 0:
                 pi = (pi + 1) % len(palette)
-            last_swap = time.time()
         c1, c2 = palette[pi]
         for i, t in enumerate(tripars):
             t.color(*(c1 if (i % 2) == swap_state else c2))
-        t_now = time.time()
+        t_now = mtime()
         pan = int(128 + 50 * math.sin(t_now * 0.5))
         tilt = int(128 + 30 * math.cos(t_now * 0.4))
         for h in focus + groot:
@@ -630,13 +670,8 @@ def scene_ring_spin(rig: Rig, stop: threading.Event) -> None:
         h.color("blue")
         h.dim(160)
 
-    pos = 0.0  # fractional position in the ring, 0..len(ring)
-    speed = 1 / 0.18  # one tripar every 180 ms
-    last = time.time()
     while not stop.is_set():
-        now = time.time()
-        pos = (pos + speed * (now - last)) % len(ring)
-        last = now
+        pos = (beats() * 2) % len(ring)   # two tripars per beat: one lap of 8 per bar
         head = int(pos)
         # leading tripar bright, trailing one fades, others bg
         for k, idx in enumerate(ring):
@@ -662,7 +697,7 @@ def scene_radial_wave(rig: Rig, stop: threading.Event) -> None:
         h.dim(180)
 
     while not stop.is_set():
-        t_now = time.time()
+        t_now = mtime()
         base = t_now * 0.18
         for k, idx in enumerate(ring):
             tripars[idx].color(*hsv(base + k / len(ring)))
@@ -699,12 +734,12 @@ def scene_stage_chase(rig: Rig, stop: threading.Event) -> None:
     palette = [(255, 0, 80), (0, 200, 255), (255, 200, 0)]
     pal_idx = 0
     pos = 0
-    last_step = time.time()
+    step = Every(0.25)              # 16th notes
     direction = 1
     line = list(stage) + [None] * len(groot)  # tripar idx or None for Groot slot
 
     while not stop.is_set():
-        if time.time() - last_step > 0.10:
+        if step():
             on_color = palette[pal_idx]
             off_color = (12, 0, 20)
             for k, slot in enumerate(line):
@@ -727,9 +762,8 @@ def scene_stage_chase(rig: Rig, stop: threading.Event) -> None:
                 pos = 1
                 direction = 1
                 pal_idx = (pal_idx + 1) % len(palette)
-            last_step = time.time()
         # heads sweep side-to-side
-        t_now = time.time()
+        t_now = mtime()
         pan = int(128 + 80 * math.sin(t_now * 1.0))
         tilt = 100
         for h in groot:
@@ -760,7 +794,7 @@ def scene_crowd_glow(rig: Rig, stop: threading.Event) -> None:
         tripars[idx].color(0, 0, 0)
 
     while not stop.is_set():
-        t_now = time.time()
+        t_now = mtime()
         v = 0.6 + 0.3 * (math.sin(t_now * 0.3) + 1) / 2
         col = hsv(0.06, s=0.8, v=v)
         for k, idx in enumerate(ring):
@@ -798,12 +832,11 @@ def scene_ring_quadrants(rig: Rig, stop: threading.Event) -> None:
         (160, 0, 255),   # purple
     ]
     rotation = 0
-    last_rot = time.time()
+    rotate = Every(1)               # every beat
 
     while not stop.is_set():
-        if time.time() - last_rot > 0.85:
+        if rotate():
             rotation = (rotation + 1) % len(ring)
-            last_rot = time.time()
         for k, idx in enumerate(ring):
             quad = ((k + rotation) // 2) % len(palette)
             tripars[idx].color(*palette[quad])
@@ -839,7 +872,7 @@ def scene_breathe(rig: Rig, stop: threading.Event) -> None:
             pass
 
     while not stop.is_set():
-        t_now = time.time()
+        t_now = mtime()
         h_drift = 0.05 + 0.05 * math.sin(t_now * 0.04)
         breath = 0.35 + 0.30 * (1 + math.sin(t_now * 0.9)) / 2
         col = hsv(h_drift, s=0.65, v=breath)
@@ -873,7 +906,7 @@ def scene_drift(rig: Rig, stop: threading.Event) -> None:
     palette_hsv = [(0.55, 1.00), (0.65, 0.90), (0.72, 0.85), (0.50, 1.00), (0.46, 0.95)]
 
     while not stop.is_set():
-        t_now = time.time()
+        t_now = mtime()
         phase = (t_now * 0.025) % 1.0
         seg = phase * len(palette_hsv)
         i0 = int(seg) % len(palette_hsv)
@@ -911,7 +944,7 @@ def scene_ember(rig: Rig, stop: threading.Event) -> None:
     next_flicker = 0.0
     last_pop = 0.0
     while not stop.is_set():
-        t_now = time.time()
+        t_now = mtime()
         if t_now >= next_flicker:
             for t in tripars:
                 base = random.randint(80, 160)
@@ -952,11 +985,11 @@ def scene_groove(rig: Rig, stop: threading.Event) -> None:
         (255, 200, 60), (200, 60, 255), (60, 255, 220),
     ]
     pi = 0
-    last_change = time.time()
+    next_colour = Every(8)          # new colour every 2 bars
     last_beat = -1
 
     while not stop.is_set():
-        t_now = time.time()
+        t_now = mtime()
         beat_phase = (t_now * 2) % 1.0
         pulse = max(0.25, 1.0 - beat_phase * 0.85)
         c = palette[pi]
@@ -972,9 +1005,8 @@ def scene_groove(rig: Rig, stop: threading.Event) -> None:
         if beat_idx != last_beat:
             last_beat = beat_idx
 
-        if t_now - last_change > 4.0:
+        if next_colour():
             pi = (pi + 1) % len(palette)
-            last_change = t_now
 
         pan = int(128 + 45 * math.sin(t_now * 0.55))
         tilt = int(128 + 15 * math.cos(t_now * 0.4))
@@ -997,7 +1029,7 @@ def scene_pinwheel(rig: Rig, stop: threading.Event) -> None:
         (255, 50, 50), (50, 50, 255), (50, 255, 80), (255, 200, 50),
     ]
     while not stop.is_set():
-        t_now = time.time()
+        t_now = mtime()
         rotation = t_now * 1.4   # ring positions per second of rotation
         for k, idx in enumerate(ring):
             quad = (int(k + rotation) // 2) % len(palette)
@@ -1037,7 +1069,7 @@ def scene_lighthouse(rig: Rig, stop: threading.Event) -> None:
             pass
 
     while not stop.is_set():
-        t_now = time.time()
+        t_now = mtime()
         pan = int(128 + 110 * math.sin(t_now * math.pi))
         tilt = 90
         for h in focus + groot:
@@ -1069,14 +1101,10 @@ def scene_chase_storm(rig: Rig, stop: threading.Event) -> None:
     ]
     n = len(ring)
     bg = (5, 0, 18)
-    speed = 9.0  # ring positions per second
-    chase_pos = 0.0
-    last_t = time.time()
 
     while not stop.is_set():
-        now = time.time()
-        chase_pos = (chase_pos + speed * (now - last_t)) % n
-        last_t = now
+        now = mtime()
+        chase_pos = (beats() * 4) % n   # 16th notes round the ring
 
         # for each ring tripar, find the closest chase head and fade
         for k, idx in enumerate(ring):
@@ -1136,7 +1164,7 @@ def scene_strobe_rain(rig: Rig, stop: threading.Event) -> None:
     ]
 
     while not stop.is_set():
-        t_now = time.time()
+        t_now = mtime()
         for i, t in enumerate(tripars):
             if on_frames[i] > 0:
                 on_frames[i] -= 1
@@ -1181,7 +1209,7 @@ def scene_glitch(rig: Rig, stop: threading.Event) -> None:
     head_colors = ["red", "blue", "green", "yellow", "white"]
 
     while not stop.is_set():
-        t_now = time.time()
+        t_now = mtime()
         if t_now >= next_change:
             for t in tripars:
                 if random.random() < 0.78:
@@ -1207,13 +1235,13 @@ def scene_supernova(rig: Rig, stop: threading.Event) -> None:
     pinspots, spotlight = rig.pinspots, rig.spotlight
     _ensure_visible(tripars, focus, groot)
     ring, stage = tripar_groups()
-    cycle = 1.4
+    cycle = 2.0   # one bar
 
     for h in focus + groot:
         h.color("white")
 
     while not stop.is_set():
-        t_now = time.time()
+        t_now = mtime()
         p = (t_now % cycle) / cycle
 
         if p < 0.10:
