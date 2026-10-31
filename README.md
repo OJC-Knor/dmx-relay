@@ -91,8 +91,11 @@ The UI has five pages:
   Beat effects (flash, pulse, chase, colour per bar), colour override and
   master dimmer sit on top of the running scene; BLINDER / STROBE /
   BLACKOUT / FOG fire only while held and release themselves if the phone
-  drops off. Scene pads can switch on the next bar. With "Saved patterns
-  follow this BPM" on, Builder patterns play at the tapped tempo.
+  drops off. Scene pads can switch on the next bar. The built-in scenes
+  run on the same beat clock: they're designed at 120 BPM and speed up or
+  slow down with the tapped tempo, with chases and colour changes landing
+  on beat divisions. With "Saved patterns follow this BPM" on, Builder
+  patterns play at the tapped tempo too.
   Browsers only allow the microphone on `https://` or `localhost`, so mic
   beat detection won't work from a phone on plain `http://<ip>:8000`.
 - **Builder** (`/builder`) — FL-style step sequencer for tripar
