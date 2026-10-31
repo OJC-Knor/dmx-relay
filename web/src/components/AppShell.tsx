@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
-  Activity, AudioLines, Layers, LayoutGrid, Sparkles, Wifi, WifiOff,
+  Activity, AudioLines, Disc3, Layers, LayoutGrid, Sparkles, Wifi, WifiOff,
 } from "lucide-react";
 
 import { useLiveInvalidation, useLiveState } from "@/lib/useLiveState";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 const tabs = [
   { to: "/",        label: "Controls", icon: AudioLines },
+  { to: "/vj",      label: "VJ",       icon: Disc3      },
   { to: "/builder", label: "Builder",  icon: LayoutGrid },
   { to: "/viz",     label: "Viz",      icon: Sparkles   },
   { to: "/editor",  label: "Layout",   icon: Layers     },

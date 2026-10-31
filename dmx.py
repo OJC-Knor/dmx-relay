@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import threading
 import time
+from typing import Callable
 
 import serial
 
@@ -51,6 +52,11 @@ class Universe:
         self._error: BaseException | None = None
         self._smooth_fixtures: list = []   # fixtures with a _smooth_step(dt) hook
         self._wire_free_at = 0.0           # monotonic time the last frame leaves the wire
+        # Last-stage hook (the VJ layer): edits a copy of each frame before it
+        # goes out, so fixture state stays what the scene wrote.
+        self.output_filter: Callable[[bytearray], None] | None = None
+        self.output = bytes(512)           # last frame actually sent (after the filter)
+        self._filter_error_at = 0.0
 
     # ----- lifecycle -----
 
@@ -82,6 +88,7 @@ class Universe:
 
     def stop(self, blackout: bool = True) -> None:
         if blackout:
+            self.output_filter = None   # a held fog/blinder must not survive shutdown
             with self._lock:
                 self._channels[:] = b"\x00" * 512
             time.sleep(self.period * 2)  # let the sender push the blackout
@@ -129,10 +136,20 @@ class Universe:
                         f._smooth_step(self.period)
                     except Exception:
                         pass
+                with self._lock:
+                    frame = bytearray(self._channels)
+                if self.output_filter is not None:
+                    try:
+                        self.output_filter(frame)
+                    except Exception as e:  # never let an effect stop the output
+                        if time.monotonic() - self._filter_error_at > 5:
+                            self._filter_error_at = time.monotonic()
+                            print(f"[dmx-tx] output filter failed: {e!r}")
+                        with self._lock:
+                            frame = bytearray(self._channels)
+                self.output = bytes(frame)
                 if not self.mock:
-                    with self._lock:
-                        snapshot = bytes(self._channels)
-                    self._send(snapshot)
+                    self._send(self.output)
                 next_tick += self.period
                 sleep = next_tick - time.monotonic()
                 if sleep > 0:

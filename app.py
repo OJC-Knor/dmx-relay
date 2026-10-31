@@ -18,9 +18,11 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from beat import BeatClock
 from dmx import Universe
 from rig import PORT, Rig, build_rig, fixture_ids
 from scenes import SCENES, SCENE_BY_KEY
+from vj import EFFECTS, HOLDS, RATES, VJ
 
 ROOT = Path(__file__).parent
 WEB_DIST = ROOT / "web" / "dist"
@@ -43,14 +45,21 @@ _fog_puff_gen = 0
 _fog_lock = threading.Lock()
 # Bumped on every layout/pattern save so all connected browsers refetch.
 _revs = {"layout": 0, "patterns": 0}
+# Shared tempo (tap / mic) and the VJ effects layer on top of the scenes.
+_clock = BeatClock()
+_vj: VJ | None = None
+_queued_scene: str | None = None          # scene waiting for the next bar
+_queued_timer: threading.Timer | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _universe, _rig
+    global _universe, _rig, _vj
     _universe = Universe(PORT)
     _universe.start()
     _rig = build_rig(_universe)
+    _vj = VJ(_rig, _clock)
+    _universe.output_filter = _vj.apply
     try:
         yield
     finally:
@@ -287,6 +296,7 @@ def list_scenes():
 # otherwise FastAPI matches "stop" as a dynamic key and 404s.
 @app.post("/scene/stop")
 def stop_scene():
+    _cancel_queued_scene()
     _stop_current_scene()
     return {"ok": True}
 
@@ -295,17 +305,32 @@ def stop_scene():
 def run_scene(key: str):
     """Dispatch a scene key. Built-in scenes go to the registry; keys
     of the form `pattern:<name>` look up a saved pattern and play it."""
+    _cancel_queued_scene()
+    _start_scene_key(key)
+    return {"ok": True, "scene": key}
+
+
+def _start_scene_key(key: str) -> None:
     if key in SCENE_BY_KEY:
         _spawn_scene(key)
-        return {"ok": True, "scene": key}
+        return
     if key.startswith("pattern:"):
         name = key.split(":", 1)[1]
         patterns = _load_patterns()
         if name not in patterns:
             raise HTTPException(404, f"pattern {name!r} not found")
         _spawn_pattern(name, patterns[name])
-        return {"ok": True, "scene": key}
+        return
     raise HTTPException(404, f"unknown scene {key!r}")
+
+
+def _cancel_queued_scene() -> None:
+    global _queued_scene, _queued_timer
+    with _scene_lock:
+        if _queued_timer is not None:
+            _queued_timer.cancel()
+        _queued_timer = None
+        _queued_scene = None
 
 
 # ----- master -----
@@ -314,6 +339,9 @@ def run_scene(key: str):
 def blackout():
     """Stop any running scene, then black out every fixture."""
     assert _rig is not None
+    _cancel_queued_scene()
+    if _vj is not None:
+        _vj.release_all()
     _stop_current_scene()
     for t in _rig.tripars:
         t.off()
@@ -322,6 +350,112 @@ def blackout():
     _rig.atomic.blackout()
     fog_off()
     return {"ok": True}
+
+
+# ----- VJ: tempo, effects, hold buttons, quantised scene pads -----
+
+class Tap(BaseModel):
+    bpm: Annotated[float, Field(ge=40, le=240)] | None = None   # None on the first tap
+    index: Annotated[int, Field(ge=0)] = 0                      # position in the tap run
+    source: str = "tap"
+
+
+class Tempo(BaseModel):
+    bpm: Annotated[float, Field(ge=40, le=240)] | None = None
+    downbeat: bool = False      # now is beat 1
+    beat_now: bool = False      # a beat happened now (mic): snap phase
+    nudge_ms: Annotated[float, Field(ge=-500, le=500)] | None = None
+    sync: bool | None = None    # patterns follow the shared BPM
+    source: str | None = None
+
+
+class VJSettings(BaseModel):
+    effects: dict[str, bool] | None = None
+    rate: float | None = None
+    colour: list[Annotated[int, Field(ge=0, le=255)]] | None = Field(None, min_length=4, max_length=4)
+    master: Annotated[int, Field(ge=0, le=255)] | None = None
+    quantize: bool | None = None
+
+
+class Hold(BaseModel):
+    name: str
+    on: bool
+
+
+@app.post("/vj/tap")
+def vj_tap(tap: Tap):
+    _clock.tap(tap.bpm, tap.index, source=tap.source)
+    return {"ok": True, "clock": _clock.snapshot()}
+
+
+@app.post("/vj/tempo")
+def vj_tempo(t: Tempo):
+    if t.bpm is not None:
+        _clock.set_bpm(t.bpm)
+    if t.downbeat:
+        _clock.downbeat()
+    if t.beat_now:
+        _clock.beat_now(source=t.source or "mic")
+    elif t.source:
+        _clock.source = t.source
+    if t.nudge_ms:
+        _clock.nudge(t.nudge_ms)
+    if t.sync is not None:
+        _clock.sync = t.sync
+    return {"ok": True, "clock": _clock.snapshot()}
+
+
+@app.post("/vj/settings")
+def vj_settings(cfg: VJSettings):
+    assert _vj is not None
+    if cfg.rate is not None and cfg.rate not in RATES:
+        raise HTTPException(422, f"rate must be one of {list(RATES)}")
+    if cfg.effects and not set(cfg.effects) <= set(EFFECTS):
+        raise HTTPException(422, f"effects must be among {list(EFFECTS)}")
+    # `colour: null` clears the override; leaving it out keeps it.
+    colour = (tuple(cfg.colour) if cfg.colour else None) if "colour" in cfg.model_fields_set else False
+    _vj.configure(effects=cfg.effects, rate=cfg.rate, colour=colour,
+                  master=cfg.master, quantize=cfg.quantize)
+    return {"ok": True}
+
+
+@app.post("/vj/hold")
+def vj_hold(h: Hold):
+    assert _vj is not None
+    if h.name not in HOLDS:
+        raise HTTPException(422, f"hold must be one of {list(HOLDS)}")
+    _vj.hold(h.name, h.on)
+    return {"ok": True}
+
+
+@app.post("/vj/scene/{key:path}")
+def vj_scene(key: str):
+    """Scene pad. With quantise on, the switch waits for the next bar."""
+    global _queued_scene, _queued_timer
+    assert _vj is not None
+    if key not in SCENE_BY_KEY and not (key.startswith("pattern:")
+                                        and key.split(":", 1)[1] in _load_patterns()):
+        raise HTTPException(404, f"unknown scene {key!r}")
+    _cancel_queued_scene()
+    if not _vj.quantize:
+        _start_scene_key(key)
+        return {"ok": True, "queued": False}
+
+    def fire():
+        global _queued_scene, _queued_timer
+        with _scene_lock:
+            if _queued_scene != key:
+                return          # cancelled or replaced meanwhile
+            _queued_scene = None
+            _queued_timer = None
+            _start_scene_key(key)
+
+    with _scene_lock:
+        _queued_scene = key
+        _queued_timer = threading.Timer(_clock.time_until(_clock.next_bar()), fire)
+        _queued_timer.daemon = True
+        _queued_timer.start()
+    return {"ok": True, "queued": True}
 
 
 # ----- layout editor -----
@@ -362,6 +496,12 @@ def get_rig():
     return {"fixtures": fixture_ids()}
 
 
+def _vj_state() -> dict | None:
+    if _vj is None:
+        return None
+    return {**_vj.snapshot(), "clock": _clock.snapshot(), "queued_scene": _queued_scene}
+
+
 @app.get("/api/state")
 def get_state():
     """Live fixture state for the visualizer."""
@@ -369,7 +509,7 @@ def get_state():
         return {
             "running_scene": None, "tripars": [], "pinspots": [],
             "spotlight": 0, "focus": [], "groot": [], "atomic": {}, "fog": 0,
-            "fog_level": 0, "revs": _revs,
+            "fog_level": 0, "revs": _revs, "vj": _vj_state(),
         }
     return {
         "running_scene": _current_scene,
@@ -386,6 +526,7 @@ def get_state():
         "fog":      _rig.fog.state["level"],
         "fog_level": _fog_level,   # slider setting; `fog` is the live output (255 during a puff)
         "revs":     _revs,
+        "vj":       _vj_state(),
     }
 
 
@@ -548,9 +689,18 @@ def _play_pattern_loop(rig: Rig, stop: threading.Event, pattern: dict) -> None:
         h.shutter("open")
         h.color("white")
 
-    step = 0
+    # Steps are 16th notes. With the beat clock synced (someone tapped) the
+    # pattern follows the shared BPM; otherwise its own saved step_ms.
+    counter = 0
     period = step_ms / 1000.0
     while not stop.is_set():
+        if _clock.sync:
+            pos = _clock.beats() * 4
+            step = int(pos)
+            wait = _clock.time_until((step + 1) / 4)
+        else:
+            step = counter
+            wait = period
         for tid, cells in tracks.items():
             if not cells:
                 continue
@@ -572,9 +722,9 @@ def _play_pattern_loop(rig: Rig, stop: threading.Event, pattern: dict) -> None:
                 continue
             kind, fixture = entry
             _apply_cell(kind, fixture, sub, cell)
-        if stop.wait(period):
+        if stop.wait(max(0.005, wait)):
             return
-        step += 1
+        counter += 1
 
 
 def _apply_cell(kind: str, fixture, sub: str | None, cell) -> None:

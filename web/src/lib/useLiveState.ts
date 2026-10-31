@@ -18,11 +18,13 @@ const EMPTY: LiveState = {
   fog: 0,
   fog_level: 0,
   revs: { layout: 0, patterns: 0 },
+  vj: null,
 };
 
-type Snapshot = { state: LiveState; connected: boolean };
+// receivedAt (performance.now) lets the beat display extrapolate between pushes.
+type Snapshot = { state: LiveState; connected: boolean; receivedAt: number };
 
-let snapshot: Snapshot = { state: EMPTY, connected: false };
+let snapshot: Snapshot = { state: EMPTY, connected: false, receivedAt: 0 };
 const listeners = new Set<() => void>();
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -39,7 +41,9 @@ function connect() {
   ws = sock;
   sock.onopen = () => emit({ ...snapshot, connected: true });
   sock.onmessage = (e) => {
-    try { emit({ state: JSON.parse(e.data), connected: true }); } catch { /* ignore */ }
+    try {
+      emit({ state: JSON.parse(e.data), connected: true, receivedAt: performance.now() });
+    } catch { /* ignore */ }
   };
   sock.onclose = () => {
     if (ws !== sock) return;

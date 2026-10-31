@@ -67,6 +67,21 @@ export type LiveState = {
   fog: number;             // live output (255 during a puff)
   fog_level: number;       // slider setting shared by all clients
   revs: { layout: number; patterns: number };  // bumped on save; clients refetch
+  vj: VJState | null;
+};
+
+export type VJEffect = "flash" | "pulse" | "chase" | "colour_bar";
+export type VJHold = "blinder" | "strobe" | "blackout" | "fog";
+
+export type VJState = {
+  effects: Record<VJEffect, boolean>;
+  rate: 0.5 | 1 | 2;
+  colour: [number, number, number, number] | null;
+  master: number;
+  quantize: boolean;             // scene pads switch on the next bar
+  holds: VJHold[];
+  queued_scene: string | null;
+  clock: { bpm: number; beat: number; sync: boolean; source: "tap" | "mic" };
 };
 
 // Cells are per-step values. RGB triples for colour rows;
