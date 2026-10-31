@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -165,7 +165,12 @@ function AtomicCard() {
 
 function FogCard() {
   const [fog, setFog] = useState(0);
-  const sendFog = throttle((v: number) => fogLevel(v).catch((e) => toast.error(e.message)), 60);
+  // Memoised: a fresh throttle per render throttles nothing, and the burst
+  // of parallel requests can land out of order, leaving the fog short of 255.
+  const sendFog = useMemo(
+    () => throttle((v: number) => fogLevel(v).catch((e) => toast.error(e.message)), 60),
+    [],
+  );
 
   return (
     <Card className="!bg-gradient-to-br !from-[#10202c] !to-[#0a141d] !border-[#1f3548]">

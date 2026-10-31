@@ -33,6 +33,14 @@ _rig: Rig | None = None
 _scene_thread: threading.Thread | None = None
 _scene_stop: threading.Event = threading.Event()
 _current_scene: str | None = None
+# Held across stop-old + start-new so two requests arriving together (two
+# phones, a double tap) can't both start a scene and orphan one of them —
+# an orphaned scene keeps writing forever and overlaps the new one.
+_scene_lock = threading.RLock()
+# Fog level the operator asked for; a puff returns to this afterwards.
+_fog_level = 0
+_fog_puff_gen = 0
+_fog_lock = threading.Lock()
 
 
 @asynccontextmanager
@@ -70,36 +78,40 @@ class Level(BaseModel):
 def _stop_current_scene(timeout: float = 2.0) -> None:
     """Signal the running scene to exit and wait for it to finish."""
     global _scene_thread, _current_scene
-    if _scene_thread is not None and _scene_thread.is_alive():
-        _scene_stop.set()
-        _scene_thread.join(timeout=timeout)
-    _scene_thread = None
-    _current_scene = None
+    with _scene_lock:
+        if _scene_thread is not None and _scene_thread.is_alive():
+            _scene_stop.set()
+            _scene_thread.join(timeout=timeout)
+            if _scene_thread.is_alive():
+                print(f"[scene] {_scene_thread.name} did not stop within {timeout}s")
+        _scene_thread = None
+        _current_scene = None
 
 
 def _spawn_scene(key: str) -> None:
     """Cancel any current scene and start a new looping one."""
     global _scene_thread, _scene_stop, _current_scene
     assert _rig is not None
-    _stop_current_scene()
-    _label, _tempo, fn = SCENE_BY_KEY[key]
-    _scene_stop = threading.Event()
-    stop = _scene_stop
+    with _scene_lock:
+        _stop_current_scene()
+        _label, _tempo, fn = SCENE_BY_KEY[key]
+        _scene_stop = threading.Event()
+        stop = _scene_stop
 
-    def run():
-        global _current_scene
-        try:
-            fn(_rig, stop)
-        except Exception as e:
-            print(f"[scene-{key}] CRASHED: {e!r}")
-            traceback.print_exc()
-        finally:
-            if _current_scene == key:
-                _current_scene = None
+        def run():
+            global _current_scene
+            try:
+                fn(_rig, stop)
+            except Exception as e:
+                print(f"[scene-{key}] CRASHED: {e!r}")
+                traceback.print_exc()
+            finally:
+                if _current_scene == key:
+                    _current_scene = None
 
-    _current_scene = key
-    _scene_thread = threading.Thread(target=run, daemon=True, name=f"scene-{key}")
-    _scene_thread.start()
+        _current_scene = key
+        _scene_thread = threading.Thread(target=run, daemon=True, name=f"scene-{key}")
+        _scene_thread.start()
 
 
 def _spawn_oneoff(target, name: str) -> None:
@@ -181,21 +193,34 @@ def atomic_off():
 
 @app.post("/fog/level")
 def fog_level(level: Level):
+    global _fog_level
     assert _rig is not None
-    _rig.fog.output(level.level)
+    with _fog_lock:
+        _fog_level = level.level
+        _rig.fog.output(level.level)
     return {"ok": True}
 
 
 @app.post("/fog/puff")
 def fog_puff():
-    """Full output for 3 seconds, then off."""
+    """Full output for 3 seconds, then back to the slider level.
+
+    Only the newest puff restores, and only if nothing else touched the
+    fog meanwhile — otherwise a puff would cut a slider set to 255 to 0.
+    """
+    global _fog_puff_gen
     assert _rig is not None
     fog = _rig.fog
+    with _fog_lock:
+        _fog_puff_gen += 1
+        gen = _fog_puff_gen
+        fog.output(255)
 
     def burst():
-        fog.output(255)
         time.sleep(3.0)
-        fog.output(0)
+        with _fog_lock:
+            if gen == _fog_puff_gen and fog.state["level"] == 255:
+                fog.output(_fog_level)
 
     _spawn_oneoff(burst, "fog-puff")
     return {"ok": True}
@@ -203,8 +228,12 @@ def fog_puff():
 
 @app.post("/fog/off")
 def fog_off():
+    global _fog_level, _fog_puff_gen
     assert _rig is not None
-    _rig.fog.output(0)
+    with _fog_lock:
+        _fog_level = 0
+        _fog_puff_gen += 1   # cancel a pending puff restore
+        _rig.fog.output(0)
     return {"ok": True}
 
 
@@ -289,7 +318,7 @@ def blackout():
     for h in _rig.heads:
         h.blackout()
     _rig.atomic.blackout()
-    _rig.fog.output(0)
+    fog_off()
     return {"ok": True}
 
 
@@ -431,26 +460,27 @@ def _spawn_pattern(name: str, pattern: dict) -> None:
     """Run a saved pattern as a looping scene."""
     global _scene_thread, _scene_stop, _current_scene
     assert _rig is not None
-    _stop_current_scene()
-    _scene_stop = threading.Event()
-    stop = _scene_stop
-    rig = _rig
+    with _scene_lock:
+        _stop_current_scene()
+        _scene_stop = threading.Event()
+        stop = _scene_stop
+        rig = _rig
 
-    def run():
-        global _current_scene
-        try:
-            _play_pattern_loop(rig, stop, pattern)
-        except Exception as e:
-            print(f"[pattern-{name}] CRASHED: {e!r}")
-            traceback.print_exc()
-        finally:
-            label = f"pattern:{name}"
-            if _current_scene == label:
-                _current_scene = None
+        def run():
+            global _current_scene
+            try:
+                _play_pattern_loop(rig, stop, pattern)
+            except Exception as e:
+                print(f"[pattern-{name}] CRASHED: {e!r}")
+                traceback.print_exc()
+            finally:
+                label = f"pattern:{name}"
+                if _current_scene == label:
+                    _current_scene = None
 
-    _current_scene = f"pattern:{name}"
-    _scene_thread = threading.Thread(target=run, daemon=True, name=f"pattern-{name}")
-    _scene_thread.start()
+        _current_scene = f"pattern:{name}"
+        _scene_thread = threading.Thread(target=run, daemon=True, name=f"pattern-{name}")
+        _scene_thread.start()
 
 
 # Named position presets used by head .pos tracks.
@@ -614,5 +644,10 @@ else:
 
 
 if __name__ == "__main__":
+    import os
+
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    # The reloader runs the app in a child process; if the parent is killed
+    # (closed terminal, SIGKILL) that child can live on as a ghost that still
+    # drives the lights. Opt in for development only: DEV=1 python app.py
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=bool(os.environ.get("DEV")))

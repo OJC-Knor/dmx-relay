@@ -53,11 +53,17 @@ in `/viz` without hardware.
 **Dev (hot-reloaded UI):**
 
 ```sh
-uv run python app.py     # backend on :8000
+DEV=1 uv run python app.py   # backend on :8000, auto-reloads on edits
 cd web && npm run dev    # Vite on :5173 with HMR + proxy back to :8000
 ```
 
 Visit `http://localhost:5173`.
+
+Only one instance can drive the adapter: the serial port is locked
+exclusively, and a second `app.py` exits with "already in use by another
+soos-lights instance" instead of interleaving its frames with the first
+(which shows up as two scenes overlapping and flicker). If you hit that
+message, find the other one with `pgrep -fl app.py`.
 
 ## Deploy as a Proxmox LXC
 
