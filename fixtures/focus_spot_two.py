@@ -94,7 +94,14 @@ class FocusSpotTwo(Fixture):
         )
 
     def position(self, pan: int, tilt: int) -> None:
-        self._set_many(pan=pan, tilt=tilt)
+        self._set_many(pan=pan, tilt=tilt, pan_fine=0, tilt_fine=0)
+
+    def position16(self, pan: int, tilt: int) -> None:
+        """Pan/tilt at 16-bit precision (0..65535) using the fine channels —
+        needed to land a beam on something small, like the mirror ball."""
+        pan = max(0, min(65535, int(pan)))
+        tilt = max(0, min(65535, int(tilt)))
+        self._set_many(pan=pan >> 8, pan_fine=pan & 0xFF, tilt=tilt >> 8, tilt_fine=tilt & 0xFF)
 
     def dim(self, level: int) -> None:
         self._set("dimmer", level)

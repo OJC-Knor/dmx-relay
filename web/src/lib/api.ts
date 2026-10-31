@@ -1,6 +1,7 @@
 // Thin wrappers around the FastAPI endpoints.
 
 import type {
+  AimPoints,
   FixtureMeta,
   VJEffect,
   VJHold,
@@ -107,3 +108,15 @@ export const vjSettings = (s: {
 }) => post("/vj/settings", s);
 export const vjHold = (name: VJHold, on: boolean) => post("/vj/hold", { name, on });
 export const vjScene = (key: string) => post(`/vj/scene/${encodeURIComponent(key)}`);
+
+// --- aim points ---
+
+export const fetchAim = (): Promise<{ points: AimPoints; heads: string[] }> => get("/api/aim");
+export const aimJog = (head: string, pan: number, tilt: number, solo = true) =>
+  post("/api/aim/jog", { head, pan, tilt, solo });
+export const aimSave = (point: string, head: string, pan: number, tilt: number) =>
+  fetch(`/api/aim/${encodeURIComponent(point)}/${encodeURIComponent(head)}`, {
+    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pan, tilt }),
+  }).then(jsonOrThrow);
+export const aimClear = (point: string, head: string) =>
+  del(`/api/aim/${encodeURIComponent(point)}/${encodeURIComponent(head)}`);

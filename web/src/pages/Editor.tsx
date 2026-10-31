@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { Magnet, RotateCcw, Save } from "lucide-react";
 
+import { AimCalibrator } from "@/components/AimCalibrator";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -54,6 +55,7 @@ export default function Editor() {
   const applySnap = (v: number) => snap ? Math.round(v * 20) / 20 : v;
 
   return (
+    <div className="space-y-3">
     <Card>
       <CardHeader
         title="Rig layout"
@@ -110,6 +112,8 @@ export default function Editor() {
         </div>
       </CardBody>
     </Card>
+    <AimCalibrator />
+    </div>
   );
 }
 

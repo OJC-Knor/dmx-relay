@@ -17,6 +17,7 @@ import threading
 import time
 from typing import Callable, Literal
 
+import aim
 from beat import BeatClock
 from layout import head_order_lr, tripar_groups
 from rig import Rig
@@ -1301,6 +1302,61 @@ def scene_supernova(rig: Rig, stop: threading.Event) -> None:
 
 # ----- registry: consumed by app.py -----
 
+# ----- mirror ball (heads aimed via the Layout page's aim calibration) -----
+
+def _aim_on_ball(rig: Rig) -> list:
+    """Point every calibrated head at the ball with a tight white beam.
+    Heads without a saved aim point keep their shutter closed — an
+    uncalibrated head would just spray light into the crowd."""
+    points = aim.load().get("ball", {})
+    aimed = []
+    for hid, h in aim.heads(rig).items():
+        p = points.get(hid)
+        if p is None:
+            h.shutter("closed")
+            continue
+        aim.beam_for_aiming(h)
+        h.position16(p["pan"], p["tilt"])
+        aimed.append(h)
+    if not aimed:
+        print("[mirror-ball] no heads calibrated — set them up on the Layout page")
+    return aimed
+
+
+def scene_mirror_ball(rig: Rig, stop: threading.Event) -> None:
+    """Classic mirror ball: room dark, every head and the pinspots on the ball."""
+    for t in rig.tripars:
+        t.off()
+    for p in rig.pinspots:
+        p.dim(255)
+    _aim_on_ball(rig)
+    while not stop.is_set():
+        time.sleep(0.1)
+
+
+def scene_mirror_ball_pulse(rig: Rig, stop: threading.Event) -> None:
+    """Heads on the ball, pumping on every beat; new colour every bar."""
+    for t in rig.tripars:
+        t.off()
+    for p in rig.pinspots:
+        p.dim(255)
+    heads = _aim_on_ball(rig)
+    focus_cols = ["white", "blue", "pink", "green", "yellow", "red"]
+    groot_cols = ["white", "blue", "magenta", "green", "yellow", "red"]
+    bar = Every(4)
+    ci = -1
+    while not stop.is_set():
+        if bar():
+            ci = (ci + 1) % len(focus_cols)
+            for h in heads:
+                h.color(focus_cols[ci] if h in rig.focus else groot_cols[ci])
+        phase = beats() % 1.0
+        level = int(255 * (0.15 + 0.85 * math.exp(-phase * 5)))   # hit on the beat, decay
+        for h in heads:
+            h.dim(level)
+        time.sleep(1 / 40)
+
+
 SCENES: list[tuple[str, str, Tempo, Scene]] = [
     # ---- SLOW (atmospheric) ----
     ("breathe",     "Breathe",       "slow",   scene_breathe),
@@ -1309,9 +1365,11 @@ SCENES: list[tuple[str, str, Tempo, Scene]] = [
     ("ocean",       "Ocean",         "slow",   scene_ocean),
     ("sunset",      "Sunset",        "slow",   scene_sunset),
     ("crowd_glow",  "Crowd glow",    "slow",   scene_crowd_glow),
+    ("mirror_ball", "Mirror ball",   "slow",   scene_mirror_ball),
 
     # ---- MEDIUM (groove) ----
     ("groove",       "Groove",        "medium", scene_groove),
+    ("mirror_ball_pulse", "Mirror ball pulse", "medium", scene_mirror_ball_pulse),
     ("ring_spin",    "Ring spin",     "medium", scene_ring_spin),
     ("radial_wave",  "Radial wave",   "medium", scene_radial_wave),
     ("pinwheel",     "Pinwheel",      "medium", scene_pinwheel),
