@@ -16,7 +16,7 @@ export function DropdownContent({
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 min-w-[12rem] rounded-xl border border-line bg-surface p-1 shadow-soft outline-none",
+          "z-50 min-w-[12rem] rounded-panel border border-line2 bg-[#141418] p-1 shadow-soft outline-none",
           "data-[state=open]:animate-scale-in",
           className,
         )}
@@ -39,7 +39,7 @@ export function DropdownItem({
     <DM.Item
       onSelect={onSelect}
       className={cn(
-        "flex cursor-pointer select-none items-center gap-2 rounded-md px-3 py-2 text-sm outline-none",
+        "flex cursor-pointer select-none items-center gap-2 rounded-[3px] px-2.5 py-1.5 text-[13px] outline-none",
         "data-[highlighted]:bg-surface2 data-[highlighted]:text-text",
         danger ? "text-danger data-[highlighted]:text-danger" : "text-mutedFg data-[highlighted]:text-text",
         className,
@@ -55,5 +55,5 @@ export function DropdownSeparator() {
 }
 
 export function DropdownLabel({ children }: { children: ReactNode }) {
-  return <DM.Label className="px-3 py-1.5 text-[10px] uppercase tracking-[0.12em] text-muted">{children}</DM.Label>;
+  return <DM.Label className="px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">{children}</DM.Label>;
 }

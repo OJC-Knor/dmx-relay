@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { HexColorPicker } from "react-colorful";
-import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
   ChevronDown, FolderOpen, Hand, Minus, MousePointerClick, Pause, Play, Plus,
@@ -73,6 +72,12 @@ const TYPE_GROUPS: { type: FixtureMeta["type"]; label: string; rgb: boolean }[] 
   { type: "groot",     label: "Groot heads",   rgb: false },
   { type: "fog",       label: "Fog",           rgb: false },
 ];
+
+// Track-header colour per fixture type (matches the Layout page).
+const TYPE_COLOR: Record<FixtureMeta["type"], string> = {
+  tripar: "#5b9dff", pinspot: "#fde047", spotlight: "#fbbf24",
+  focus: "#ffa64d", groot: "#b87cff", atomic: "#ff5070", fog: "#5fd6ff",
+};
 
 type RowKind = "color" | "gobo" | "pos";
 type Row = { trackId: string; label: string; kind: RowKind; rgbRow: boolean };
@@ -267,11 +272,23 @@ export default function Builder() {
     .filter((k) => !k.startsWith("__")).sort();
 
   return (
-    <div className="space-y-4">
-      {/* Transport / metadata bar */}
+    <div className="space-y-3">
+      {/* Transport strip */}
       <Card>
-        <CardBody className="!pt-4">
-          <div className="flex flex-wrap items-end gap-4">
+        <CardBody>
+          <div className="flex flex-wrap items-end gap-3">
+            <Button
+              variant={playingThis ? "default" : "primary"}
+              onClick={togglePlay}
+              className={cn("min-w-[104px]", playingThis && "!border-live !bg-live !text-black")}
+            >
+              {playingThis ? (
+                <><Pause className="size-3.5" /> Stop</>
+              ) : (
+                <><Play className="size-3.5" /> Play</>
+              )}
+            </Button>
+
             <Field label="Name" className="min-w-[200px]">
               <Input
                 value={name}
@@ -282,7 +299,7 @@ export default function Builder() {
 
             <Field label="Steps">
               <div className="flex items-center gap-1">
-                <Button size="icon" variant="outline" className="!h-10 !w-10" onClick={() => onResize(steps - 1)}>
+                <Button size="icon" variant="outline" className="!h-9 !w-8" onClick={() => onResize(steps - 1)}>
                   <Minus className="size-3.5" />
                 </Button>
                 <Input
@@ -291,17 +308,17 @@ export default function Builder() {
                   min={2}
                   max={64}
                   onChange={(e) => onResize(+e.target.value || 16)}
-                  className="w-16 text-center tabular-nums"
+                  className="w-14 text-center font-mono tabular-nums"
                 />
-                <Button size="icon" variant="outline" className="!h-10 !w-10" onClick={() => onResize(steps + 1)}>
+                <Button size="icon" variant="outline" className="!h-9 !w-8" onClick={() => onResize(steps + 1)}>
                   <Plus className="size-3.5" />
                 </Button>
               </div>
             </Field>
 
-            <Field label={`BPM • ${stepMs}ms/step`}>
+            <Field label={`BPM · ${stepMs} ms/step`}>
               <div className="flex items-center gap-1">
-                <Button size="icon" variant="outline" className="!h-10 !w-10" onClick={() => setBpm((v) => Math.max(40, v - 1))}>
+                <Button size="icon" variant="outline" className="!h-9 !w-8" onClick={() => setBpm((v) => Math.max(40, v - 1))}>
                   <Minus className="size-3.5" />
                 </Button>
                 <Input
@@ -310,9 +327,9 @@ export default function Builder() {
                   min={40}
                   max={240}
                   onChange={(e) => setBpm(Math.max(40, Math.min(240, +e.target.value || 120)))}
-                  className="w-16 text-center tabular-nums"
+                  className="w-14 text-center font-mono tabular-nums"
                 />
-                <Button size="icon" variant="outline" className="!h-10 !w-10" onClick={() => setBpm((v) => Math.min(240, v + 1))}>
+                <Button size="icon" variant="outline" className="!h-9 !w-8" onClick={() => setBpm((v) => Math.min(240, v + 1))}>
                   <Plus className="size-3.5" />
                 </Button>
               </div>
@@ -322,7 +339,7 @@ export default function Builder() {
               <DropdownMenu>
                 <DropdownTrigger asChild>
                   <Button variant="outline">
-                    <FolderOpen className="size-4" /> Patterns
+                    <FolderOpen className="size-3.5" /> Patterns
                     <ChevronDown className="size-3 opacity-60" />
                   </Button>
                 </DropdownTrigger>
@@ -359,21 +376,14 @@ export default function Builder() {
 
               <Tooltip content="Clear all cells">
                 <Button variant="ghost" onClick={clear}>
-                  <X className="size-4" /> Clear
+                  <X className="size-3.5" /> Clear
                 </Button>
               </Tooltip>
 
               <Button variant="outline" onClick={save}>
-                <Save className="size-4" /> Save
+                <Save className="size-3.5" /> Save
               </Button>
 
-              <Button variant="primary" onClick={togglePlay} className="min-w-[120px]">
-                {playingThis ? (
-                  <><Pause className="size-4" /> Stop</>
-                ) : (
-                  <><Play className="size-4" /> Play</>
-                )}
-              </Button>
             </div>
           </div>
         </CardBody>
@@ -382,15 +392,15 @@ export default function Builder() {
       {/* Brushes */}
       <Card>
         <CardHeader title="Brushes" subtitle="Painting auto-uses the brush matching each row" />
-        <CardBody className="space-y-4">
-          <BrushRow label="Color">
+        <CardBody className="space-y-2.5">
+          <BrushRow label="Colour">
             {COLOR_PALETTE.map((c, i) => (
               <Tooltip key={c.name} content={c.name}>
                 <button
                   onClick={() => { setColorIdx(i); setUseCustom(false); }}
                   className={cn(
-                    "relative h-9 w-9 rounded-lg border-2 transition",
-                    !useCustom && i === colorIdx ? "border-text scale-110 shadow-glow" : "border-line hover:border-line2",
+                    "relative h-8 w-8 rounded-[4px] border-2 transition-colors",
+                    !useCustom && i === colorIdx ? "border-white" : "border-transparent hover:border-line2",
                     c.name === "off" && "bg-surface3",
                   )}
                   style={c.rgb ? { background: `rgb(${c.rgb.join(",")})` } : undefined}
@@ -409,8 +419,8 @@ export default function Builder() {
                 <button
                   onClick={() => setUseCustom(true)}
                   className={cn(
-                    "h-9 w-9 rounded-lg border-2 transition",
-                    useCustom ? "border-text scale-110 shadow-glow" : "border-line hover:border-line2",
+                    "h-8 w-8 rounded-[4px] border-2 transition-colors",
+                    useCustom ? "border-white" : "border-line2 hover:border-[#3a3a44]",
                   )}
                   style={{ background: `rgb(${customColor.join(",")})` }}
                 />
@@ -438,8 +448,8 @@ export default function Builder() {
                 <button
                   onClick={() => setGoboIdx(i)}
                   className={cn(
-                    "h-9 min-w-[2.5rem] rounded-lg border-2 px-2 text-xs font-bold transition",
-                    i === goboIdx ? "border-text bg-tripar/20 scale-105" : "border-line bg-bg2 text-mutedFg hover:border-line2",
+                    "h-8 min-w-[2.25rem] rounded-[4px] border px-2 font-mono text-[11px] font-bold transition-colors",
+                    i === goboIdx ? "border-accent bg-accent text-black" : "border-line2 bg-surface2 text-mutedFg hover:border-[#3a3a44]",
                     g.value === null && "italic",
                   )}
                 >
@@ -455,8 +465,8 @@ export default function Builder() {
                 <button
                   onClick={() => setPosIdx(i)}
                   className={cn(
-                    "relative h-9 w-9 rounded-lg border-2 transition bg-surface3",
-                    i === posIdx ? "border-text scale-110 shadow-glow" : "border-line hover:border-line2",
+                    "relative h-8 w-8 rounded-[4px] border bg-black transition-colors",
+                    i === posIdx ? "border-accent" : "border-line2 hover:border-[#3a3a44]",
                   )}
                 >
                   {p.value !== null ? (
@@ -476,7 +486,7 @@ export default function Builder() {
 
       {/* Filters & paint mode */}
       <Card>
-        <CardBody className="!pt-4">
+        <CardBody>
           <div className="flex flex-wrap items-center gap-4">
             <Field label="Mode" className="!gap-1">
               <ToggleGroup value={paintMode} onValueChange={(v) => setPaintMode(v as "draw" | "tap")}>
@@ -500,11 +510,11 @@ export default function Builder() {
                         return n;
                       })}
                       className={cn(
-                        "rounded-full border px-3 py-1 text-xs transition",
-                        on ? "border-accent bg-accent/15 text-accent"
-                           : "border-line text-mutedFg hover:text-text",
+                        "flex h-7 items-center gap-1.5 rounded-[4px] border px-2 text-[10px] font-semibold uppercase tracking-[0.08em] transition-colors",
+                        on ? "border-line2 bg-surface2 text-text" : "border-line text-muted hover:text-text",
                       )}
                     >
+                      <span className="size-1.5 rounded-full" style={{ background: on ? TYPE_COLOR[g.type] : "#2a2a31" }} />
                       {g.label}
                     </button>
                   );
@@ -520,37 +530,38 @@ export default function Builder() {
         <CardHeader
           title="Pattern"
           subtitle={`${(stepMs * steps / 1000).toFixed(2)}s loop · ${Object.values(tracks).flat().filter((c) => c !== null).length} cells lit`}
-          action={playingThis && <Badge tone="accent">▶ playing</Badge>}
+          action={playingThis && <Badge tone="ok">▶ Playing</Badge>}
         />
         <CardBody>
           <div className="scrollbar-thin overflow-x-auto">
-            <div className="inline-block min-w-full rounded-lg border border-line bg-bg2 p-3">
+            <div className="inline-block min-w-full rounded-key border border-line bg-black p-2">
               <div className="mb-1 flex">
-                <div className="w-24" />
+                <div className="w-28" />
                 {Array.from({ length: steps }).map((_, s) => (
                   <div
                     key={s}
                     className={cn(
-                      "flex h-4 w-7 items-center justify-center text-[10px] tabular-nums",
-                      playCol === s ? "text-accent font-semibold" : "text-muted",
+                      "m-px flex h-4 w-6 items-center justify-center rounded-[2px] font-mono text-[9px] tabular-nums",
+                      playCol === s ? "bg-live font-bold text-black" : s % 4 === 0 ? "text-text" : "text-[#44444c]",
                     )}
                   >
-                    {s % 4 === 0 ? s + 1 : ""}
+                    {s % 4 === 0 ? s / 4 + 1 : "·"}
                   </div>
                 ))}
               </div>
 
               {byType.filter((g) => enabledTypes.has(g.type)).map((g) => (
                 <div key={g.type} className="mt-2">
-                  <div className="mb-1 mt-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-muted">
-                    <span className="h-px flex-1 bg-line/60" />
+                  <div className="mb-1 mt-1 flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.14em] text-muted">
+                    <span className="h-2.5 w-[3px] rounded-full" style={{ background: TYPE_COLOR[g.type] }} />
                     <span>{g.label}</span>
-                    <span className="h-px flex-1 bg-line/60" />
+                    <span className="h-px flex-1 bg-line" />
                   </div>
                   {g.rows.map((row) => (
                     <RowEl
                       key={row.trackId}
                       row={row}
+                      colour={TYPE_COLOR[g.type]}
                       rgbDisplay={g.rgb && row.kind === "color"}
                       cells={tracks[row.trackId] ?? []}
                       steps={steps}
@@ -579,16 +590,17 @@ export default function Builder() {
 function BrushRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="w-16 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">{label}</span>
+      <span className="w-16 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">{label}</span>
       {children}
     </div>
   );
 }
 
 function RowEl({
-  row, rgbDisplay, cells, steps, playCol, onPaintStart, onPaintEnter,
+  row, colour, rgbDisplay, cells, steps, playCol, onPaintStart, onPaintEnter,
 }: {
   row: Row;
+  colour: string;
   rgbDisplay: boolean;
   cells: Cell[];
   steps: number;
@@ -598,16 +610,18 @@ function RowEl({
 }) {
   return (
     <div className="flex items-center">
-      <div className="w-24 truncate pr-2 text-right text-[11px] text-mutedFg">{row.label}</div>
+      <div className="mr-1 flex h-7 w-[108px] items-center gap-1.5 truncate rounded-[2px] bg-surface2 px-1.5 font-mono text-[10px] uppercase text-mutedFg"
+           style={{ borderLeft: `2px solid ${colour}` }}>
+        <span className="truncate">{row.label}</span>
+      </div>
       {Array.from({ length: steps }).map((_, s) => {
         const c = cells[s];
         const isPlaying = playCol === s;
-        const beat = s % 4 === 0;
+        const oddBeat = Math.floor(s / 4) % 2 === 1;   // alternate shading per beat, like a DAW
         const fill = cellFill(row.kind, c, rgbDisplay);
         return (
-          <motion.button
+          <button
             key={s}
-            whileTap={{ scale: 0.85 }}
             onPointerDown={(e) => {
               e.preventDefault();
               (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
@@ -615,18 +629,17 @@ function RowEl({
             }}
             onPointerEnter={() => onPaintEnter(s)}
             className={cn(
-              "relative m-px h-7 w-6 rounded border touch-none transition-colors",
-              beat ? "border-accent/40" : "border-line",
-              isPlaying && "ring-2 ring-accent ring-inset",
+              "relative m-px h-7 w-6 rounded-[2px] touch-none transition-colors",
+              isPlaying && "outline outline-1 outline-live",
             )}
-            style={fill.bg ? { background: fill.bg } : { backgroundColor: "#1f1f25" }}
+            style={fill.bg ? { background: fill.bg } : { backgroundColor: oddBeat ? "#1c1c22" : "#141418" }}
           >
             {fill.label && (
               <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold leading-none text-black/80">
                 {fill.label}
               </span>
             )}
-          </motion.button>
+          </button>
         );
       })}
     </div>

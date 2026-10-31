@@ -27,7 +27,7 @@ HOLD_TTL = 0.7          # seconds a hold stays on without a refresh
 STROBE_HZ = 10.0
 HOLDS = ("blinder", "strobe", "blackout", "fog")
 EFFECTS = ("flash", "pulse", "chase", "colour_bar")
-RATES = (0.5, 1.0, 2.0)
+RATES = (0.25, 0.5, 1.0, 2.0, 4.0)
 
 # Colour-per-bar cycle (r, g, b, w).
 PALETTE: list[tuple[int, int, int, int]] = [

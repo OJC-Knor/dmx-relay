@@ -16,7 +16,7 @@ export function ToggleGroup({
       value={value}
       onValueChange={(v) => v && onValueChange(v)}
       className={cn(
-        "inline-flex rounded-full border border-line bg-surface2 p-1 text-xs",
+        "inline-flex gap-0.5 rounded-key border border-line bg-bg2 p-0.5",
         className,
       )}
     >
@@ -32,9 +32,9 @@ export function ToggleItem({
     <TG.Item
       value={value}
       className={cn(
-        "rounded-full px-4 py-1.5 text-mutedFg transition-colors",
-        "data-[state=on]:bg-accent data-[state=on]:font-semibold data-[state=on]:text-black",
-        "hover:text-text",
+        "rounded-[3px] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-mutedFg transition-colors",
+        "data-[state=on]:bg-accent data-[state=on]:text-black",
+        "hover:text-text data-[state=on]:hover:text-black",
         className,
       )}
     >

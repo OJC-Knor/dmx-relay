@@ -75,7 +75,7 @@ export type VJHold = "blinder" | "strobe" | "blackout" | "fog";
 
 export type VJState = {
   effects: Record<VJEffect, boolean>;
-  rate: 0.5 | 1 | 2;
+  rate: 0.25 | 0.5 | 1 | 2 | 4;
   colour: [number, number, number, number] | null;
   master: number;
   quantize: boolean;             // scene pads switch on the next bar

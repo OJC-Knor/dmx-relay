@@ -8,7 +8,7 @@
 
 html, body, #root {
   background: #08080a;
-  color: #f4f4f6;
+  color: #e6e6e9;
   min-height: 100vh;
 }
 
@@ -19,6 +19,7 @@ html { font-family: 'Inter', sans-serif; }
 
 body {
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "ss01", "cv11";
 }
