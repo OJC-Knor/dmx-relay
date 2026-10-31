@@ -19,7 +19,7 @@ from typing import Callable, Literal
 
 import aim
 from beat import BeatClock
-from layout import head_order_lr, tripar_groups
+from layout import head_order_lr, positions, tripar_groups
 from rig import Rig
 
 Scene = Callable[[Rig, threading.Event], None]
@@ -1302,6 +1302,292 @@ def scene_supernova(rig: Rig, stop: threading.Event) -> None:
 
 # ----- registry: consumed by app.py -----
 
+# ----- techno (all on the beat clock; Atomic and fog stay manual) -----
+
+def _kick(phase: float, decay: float = 7.0) -> float:
+    """Envelope that hits 1.0 on the beat and decays — a visual kick drum."""
+    return math.exp(-phase * decay)
+
+
+def _heads_lr(rig: Rig) -> list:
+    """All moving heads (focus + groot) ordered left to right by the saved layout."""
+    pos = positions()
+    hs = [(f"focus-{i + 1}", h) for i, h in enumerate(rig.focus)]
+    hs += [(f"groot-{i + 1}", h) for i, h in enumerate(rig.groot)]
+    hs.sort(key=lambda t: pos.get(t[0], (0.5, 0.5))[0])
+    return [h for _, h in hs]
+
+
+def _head_colour(h, rig: Rig, focus_name: str, groot_name: str) -> None:
+    h.color(focus_name if h in rig.focus else groot_name)
+
+
+def _beams(heads: list, colour: str = "white") -> None:
+    """Tight, fast beams: open shutter, no gobo/prism, snap moves."""
+    for h in heads:
+        aim.beam_for_aiming(h)
+        if colour != "white":
+            try:
+                h.color(colour)
+            except ValueError:
+                pass
+
+
+def scene_hypnotic(rig: Rig, stop: threading.Event) -> None:
+    """Intro / break: cold blue bed, one white dot stepping round the ring each
+    beat, heads circling slowly together with a gobo texture."""
+    tripars, heads = rig.tripars, _heads_lr(rig)
+    ring, stage = tripar_groups()
+    _ensure_visible(tripars, rig.focus, rig.groot)
+    for p in rig.pinspots:
+        p.dim(0)
+    for h in heads:
+        _head_colour(h, rig, "blue", "blue")
+        h.dim(120)
+    for h in rig.focus:
+        h.gobo("gobo3")
+    while not stop.is_set():
+        b = beats()
+        dot = int(b) % len(ring)
+        for k, idx in enumerate(ring):
+            tripars[idx].color(*((200, 200, 255) if k == dot else (0, 6, 40)))
+        for idx in stage:
+            tripars[idx].color(0, 4, 28)
+        for i, h in enumerate(heads):
+            a = 2 * math.pi * (b / 16 + i * 0.04)          # one lap every 4 bars
+            h.position(int(128 + 50 * math.cos(a)), int(150 + 30 * math.sin(a)))
+        time.sleep(1 / 40)
+
+
+def scene_warehouse(rig: Rig, stop: threading.Event) -> None:
+    """Near dark: stage pars pulse deep red on the kick, tight white beams
+    fanned out over the crowd, drifting up and down over 8 bars."""
+    tripars, heads = rig.tripars, _heads_lr(rig)
+    ring, stage = tripar_groups()
+    for t in tripars:
+        t.enable()
+    for idx in ring:
+        tripars[idx].color(0, 0, 0)
+    for p in rig.pinspots:
+        p.dim(0)
+    _beams(heads)
+    n = len(heads)
+    while not stop.is_set():
+        b = beats()
+        k = _kick(b % 1.0, 5.0)
+        for idx in stage:
+            tripars[idx].color(int(30 + 225 * k), 0, 0)
+        tilt = int(160 + 35 * math.sin(2 * math.pi * b / 32))   # 8-bar drift
+        for i, h in enumerate(heads):
+            h.position(int(128 + (i - (n - 1) / 2) * 20), tilt)
+            h.dim(170)
+        time.sleep(1 / 40)
+
+
+def scene_four_floor(rig: Rig, stop: threading.Event) -> None:
+    """White hit on every kick, pinspots on the offbeat; heads flip between
+    fanned in and fanned out every bar."""
+    tripars, heads = rig.tripars, _heads_lr(rig)
+    for t in tripars:
+        t.enable()
+    _beams(heads)
+    n = len(heads)
+    bar = Every(4)
+    spread = 0
+    while not stop.is_set():
+        b = beats()
+        if bar():
+            spread = 28 if spread != 28 else -14            # fan out / fan in
+            for i, h in enumerate(heads):
+                h.position(int(128 + (i - (n - 1) / 2) * spread), 155)
+        k = _kick(b % 1.0, 8.0)
+        v = int(255 * k)
+        for t in tripars:
+            t.color(v, v, v, v)
+        off = _kick((b + 0.5) % 1.0, 10.0)                  # the "and" of each beat
+        for p in rig.pinspots:
+            p.dim(int(255 * off))
+        for h in heads:
+            h.dim(int(60 + 195 * k))
+        time.sleep(1 / 60)
+
+
+def scene_hihat(rig: Rig, stop: threading.Event) -> None:
+    """A white dot races the ring on 16ths, red kick on the stage, head beams
+    chopping on 8ths."""
+    tripars, heads = rig.tripars, _heads_lr(rig)
+    ring, stage = tripar_groups()
+    for t in tripars:
+        t.enable()
+    _beams(heads)
+    n = len(heads)
+    bar = Every(4)
+    lean = 1
+    while not stop.is_set():
+        b = beats()
+        dot = int(b * 4) % len(ring)
+        for k_, idx in enumerate(ring):
+            tripars[idx].color(*((0, 0, 0, 255) if k_ == dot else (0, 0, 0, 0)))
+        r = int(255 * _kick(b % 1.0, 6.0))
+        for idx in stage:
+            tripars[idx].color(r, 0, 0)
+        if bar():
+            lean = -lean
+            for i, h in enumerate(heads):
+                h.position(int(128 + lean * 30 + (i - (n - 1) / 2) * 10), 165)
+        gate = 255 if (b * 2) % 1.0 < 0.45 else 0           # open for the first half of each 8th
+        for h in heads:
+            h.dim(gate)
+        time.sleep(1 / 60)
+
+
+def scene_scanner(rig: Rig, stop: threading.Event) -> None:
+    """Heads sweep in a mirrored fan, one sweep per bar; prism every other
+    bar; white accent on every downbeat."""
+    tripars, heads = rig.tripars, _heads_lr(rig)
+    for t in tripars:
+        t.enable()
+    _beams(heads)
+    n = len(heads)
+    bar = Every(4)
+    bar_no = 0
+    while not stop.is_set():
+        b = beats()
+        if bar():
+            bar_no += 1
+            for h in rig.focus:
+                h.prism(bar_no % 2 == 0)
+        sweep = math.sin(2 * math.pi * b / 4)
+        for i, h in enumerate(heads):
+            side = -1 if i < n / 2 else 1                   # left half mirrors the right
+            h.position(int(128 + side * 75 * sweep), 135)
+            h.dim(255)
+        accent = _kick(b % 4.0, 3.0)                        # decays over the bar's first beat
+        v = int(255 * accent)
+        for t in tripars:
+            t.color(0, 0, 0, v)
+        time.sleep(1 / 60)
+
+
+def scene_acid(rig: Rig, stop: threading.Event) -> None:
+    """Acid green and magenta swapping on 8ths; heads circle once per bar
+    with prism and gobos."""
+    tripars, heads = rig.tripars, _heads_lr(rig)
+    _ensure_visible(tripars, rig.focus, rig.groot)
+    for h in heads:
+        _head_colour(h, rig, "light_green", "light_green")
+    for h in rig.focus:
+        h.gobo("gobo2")
+        h.prism(True)
+    acid, mag = (90, 255, 0), (255, 0, 190)
+    swap = Every(0.5)
+    flip = 0
+    col_bar = Every(4)
+    alt = False
+    while not stop.is_set():
+        b = beats()
+        if swap():
+            flip = 1 - flip
+        if col_bar():
+            alt = not alt
+            for h in heads:
+                _head_colour(h, rig, "pink" if alt else "light_green", "magenta" if alt else "light_green")
+        pump = 0.55 + 0.45 * _kick((b * 4) % 1.0, 6.0)      # 16th-note shimmer
+        for i, t in enumerate(tripars):
+            c = acid if (i % 2) == flip else mag
+            t.color(int(c[0] * pump), int(c[1] * pump), int(c[2] * pump))
+        for i, h in enumerate(heads):
+            a = 2 * math.pi * (b / 4 + i / max(1, len(heads)))
+            h.position(int(128 + 60 * math.cos(a)), int(140 + 40 * math.sin(a)))
+            h.dim(int(255 * (0.4 + 0.6 * _kick(b % 1.0, 4.0))))
+        time.sleep(1 / 60)
+
+
+def scene_beam_cross(rig: Rig, stop: threading.Event) -> None:
+    """Beams snap between an X and straight down on every beat; shutter
+    strobe fill on the last beat of every 4 bars."""
+    tripars, heads = rig.tripars, _heads_lr(rig)
+    for t in tripars:
+        t.off()
+    for p in rig.pinspots:
+        p.dim(0)
+    _beams(heads)
+    n = len(heads)
+    beat = Every(1)
+    while not stop.is_set():
+        b = beats()
+        if beat():
+            crossed = int(b) % 2 == 0
+            for i, h in enumerate(heads):
+                side = -1 if i < n / 2 else 1
+                pan = 128 - side * 55 if crossed else 128 + (i - (n - 1) / 2) * 6
+                h.position(int(pan), 150 if crossed else 185)
+            fill = int(b) % 16 == 15                        # last beat of 4 bars
+            for h in heads:
+                h.shutter("strobe" if fill else "open")
+        for h in heads:
+            h.dim(int(255 * (0.25 + 0.75 * _kick(b % 1.0, 5.0))))
+        time.sleep(1 / 60)
+
+
+def scene_build_drop(rig: Rig, stop: threading.Event) -> None:
+    """Follows the 8-bar phrase (hit Resync on a phrase start): 6 bars of
+    groove, a 2-bar build whose pulse doubles (8ths, 16ths, 32nds) while the
+    heads rise, a half-beat blackout, then a full white hit on the 1."""
+    tripars, heads = rig.tripars, _heads_lr(rig)
+    ring, stage = tripar_groups()
+    for t in tripars:
+        t.enable()
+    _beams(heads)
+    n = len(heads)
+    while not stop.is_set():
+        b = beats()
+        pb = b % 32                                         # position in the phrase
+        if pb < 1:                                          # THE DROP: white hit, fans out
+            k = _kick(pb, 2.5)
+            v = int(255 * (0.3 + 0.7 * k))
+            for t in tripars:
+                t.color(v, v, v, v)
+            for p in rig.pinspots:
+                p.dim(v)
+            for i, h in enumerate(heads):
+                h.shutter("open")
+                h.position(int(128 + (i - (n - 1) / 2) * 30), 150)
+                h.dim(255)
+        elif pb < 24:                                       # groove: red kick, slow sweep
+            k = _kick(pb % 1.0, 6.0)
+            for idx in stage:
+                tripars[idx].color(int(255 * k), 0, 0)
+            for idx in ring:
+                tripars[idx].color(0, 0, 0, int(90 * _kick((pb + 0.5) % 1.0, 8.0)))
+            for p in rig.pinspots:
+                p.dim(0)
+            s = math.sin(2 * math.pi * pb / 8)
+            for i, h in enumerate(heads):
+                h.position(int(128 + 50 * s + (i - (n - 1) / 2) * 12), 160)
+                h.dim(140)
+        elif pb < 31.5:                                     # build: pulse rate doubles
+            sub = 2 if pb < 28 else 4 if pb < 30 else 8
+            progress = (pb - 24) / 7.5
+            on = (pb * sub) % 1.0 < 0.5
+            v = int((80 + 175 * progress) * on)
+            for t in tripars:
+                t.color(v, v, v, v)
+            for p in rig.pinspots:
+                p.dim(v)
+            for i, h in enumerate(heads):
+                h.position(int(128 + (i - (n - 1) / 2) * (12 - 10 * progress)), int(160 - 90 * progress))
+                h.dim(int(255 * on))
+        else:                                               # the gap before the drop
+            for t in tripars:
+                t.color(0, 0, 0, 0)
+            for p in rig.pinspots:
+                p.dim(0)
+            for h in heads:
+                h.dim(0)
+        time.sleep(1 / 60)
+
+
 # ----- mirror ball (heads aimed via the Layout page's aim calibration) -----
 
 def _aim_on_ball(rig: Rig) -> list:
@@ -1366,10 +1652,12 @@ SCENES: list[tuple[str, str, Tempo, Scene]] = [
     ("sunset",      "Sunset",        "slow",   scene_sunset),
     ("crowd_glow",  "Crowd glow",    "slow",   scene_crowd_glow),
     ("mirror_ball", "Mirror ball",   "slow",   scene_mirror_ball),
+    ("hypnotic",    "Hypnotic",      "slow",   scene_hypnotic),
 
     # ---- MEDIUM (groove) ----
     ("groove",       "Groove",        "medium", scene_groove),
     ("mirror_ball_pulse", "Mirror ball pulse", "medium", scene_mirror_ball_pulse),
+    ("warehouse",    "Warehouse",     "medium", scene_warehouse),
     ("ring_spin",    "Ring spin",     "medium", scene_ring_spin),
     ("radial_wave",  "Radial wave",   "medium", scene_radial_wave),
     ("pinwheel",     "Pinwheel",      "medium", scene_pinwheel),
@@ -1385,12 +1673,18 @@ SCENES: list[tuple[str, str, Tempo, Scene]] = [
     ("ring_quadrants",  "Quadrants",    "fast",   scene_ring_quadrants),
     ("strobe_rain",     "Strobe rain",  "fast",   scene_strobe_rain),
     ("buildup",         "Buildup",      "fast",   scene_buildup),
+    ("four_floor",      "Four to the floor", "fast", scene_four_floor),
+    ("hihat",           "Hi-hat",       "fast",   scene_hihat),
+    ("scanner",         "Scanner",      "fast",   scene_scanner),
 
     # ---- INSANE (peak) ----
     ("drop",        "Drop",          "insane", scene_drop),
     ("climax",      "Climax",        "insane", scene_climax),
     ("glitch",      "Glitch",        "insane", scene_glitch),
     ("supernova",   "Supernova",     "insane", scene_supernova),
+    ("acid",        "Acid",          "insane", scene_acid),
+    ("beam_cross",  "Beam cross",    "insane", scene_beam_cross),
+    ("build_drop",  "Build & drop",  "insane", scene_build_drop),
 ]
 
 SCENE_BY_KEY: dict[str, tuple[str, Tempo, Scene]] = {
