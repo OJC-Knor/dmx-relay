@@ -81,11 +81,20 @@ Full guide in [`deploy/README.md`](deploy/README.md). TL;DR:
 
 Updates: `bash /opt/soos-lights/deploy/update.sh`.
 
-The UI has four pages:
+The UI has five pages:
 
 - **Controls** (`/`) — colour picker for all Tripars, white & dimmer
   sliders, Atomic action buttons, Fog level + puff, scene grid (built-in
   scenes and saved patterns), sticky BLACKOUT bar.
+- **VJ** (`/vj`) — phone-first live surface. Tap the tempo (or let the
+  phone's microphone follow the kick); every phone shares the same beat.
+  Beat effects (flash, pulse, chase, colour per bar), colour override and
+  master dimmer sit on top of the running scene; BLINDER / STROBE /
+  BLACKOUT / FOG fire only while held and release themselves if the phone
+  drops off. Scene pads can switch on the next bar. With "Saved patterns
+  follow this BPM" on, Builder patterns play at the tapped tempo.
+  Browsers only allow the microphone on `https://` or `localhost`, so mic
+  beat detection won't work from a phone on plain `http://<ip>:8000`.
 - **Builder** (`/builder`) — FL-style step sequencer for tripar
   patterns. Save them and they appear in the Controls scene grid.
 - **Viz** (`/viz`) — live rendering of the rig over a WebSocket; lets

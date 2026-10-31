@@ -2,6 +2,8 @@
 
 import type {
   FixtureMeta,
+  VJEffect,
+  VJHold,
   LayoutPositions,
   Pattern,
   PatternsResponse,
@@ -90,3 +92,18 @@ export const savePattern = (name: string, pattern: Pattern) =>
 
 export const deletePattern = (name: string) =>
   del(`/api/patterns/${encodeURIComponent(name)}`);
+
+// --- VJ ---
+
+export const vjTap = (bpm: number | null, index: number, source: "tap" | "mic" = "tap") =>
+  post("/vj/tap", { bpm, index, source });
+export const vjTempo = (t: {
+  bpm?: number; downbeat?: boolean; beat_now?: boolean; nudge_ms?: number;
+  sync?: boolean; source?: "tap" | "mic";
+}) => post("/vj/tempo", t);
+export const vjSettings = (s: {
+  effects?: Partial<Record<VJEffect, boolean>>; rate?: number;
+  colour?: [number, number, number, number] | null; master?: number; quantize?: boolean;
+}) => post("/vj/settings", s);
+export const vjHold = (name: VJHold, on: boolean) => post("/vj/hold", { name, on });
+export const vjScene = (key: string) => post(`/vj/scene/${encodeURIComponent(key)}`);

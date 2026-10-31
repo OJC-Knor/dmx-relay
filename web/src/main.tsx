@@ -10,6 +10,7 @@ import { TooltipProvider } from "@/components/ui/Tooltip";
 import Controls from "@/pages/Controls";
 import Builder from "@/pages/Builder";
 import Viz from "@/pages/Viz";
+import VJ from "@/pages/VJ";
 import Editor from "@/pages/Editor";
 
 const queryClient = new QueryClient({
@@ -26,6 +27,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Routes>
             <Route element={<AppShell />}>
               <Route path="/" element={<Controls />} />
+              <Route path="/vj" element={<VJ />} />
               <Route path="/builder" element={<Builder />} />
               <Route path="/viz" element={<Viz />} />
               <Route path="/editor" element={<Editor />} />

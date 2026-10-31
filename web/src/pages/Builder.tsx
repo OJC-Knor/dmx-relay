@@ -138,7 +138,10 @@ export default function Builder() {
 
   const stepMs = useMemo(() => Math.round(60_000 / (bpm * 4)), [bpm]);
 
-  const running = useLiveState().state.running_scene;
+  const live = useLiveState().state;
+  const running = live.running_scene;
+  // With the VJ beat clock synced, patterns play at the tapped BPM, so the playhead does too.
+  const playStepMs = live.vj?.clock.sync ? Math.round(60_000 / (live.vj.clock.bpm * 4)) : stepMs;
   const playingThis = !!running && running === `pattern:${name || "__live"}`;
 
   const [playCol, setPlayCol] = useState(-1);
@@ -147,12 +150,12 @@ export default function Builder() {
     if (playTimer.current) { clearInterval(playTimer.current); playTimer.current = null; }
     if (playingThis) {
       setPlayCol(0);
-      playTimer.current = window.setInterval(() => setPlayCol((c) => (c + 1) % steps), stepMs);
+      playTimer.current = window.setInterval(() => setPlayCol((c) => (c + 1) % steps), playStepMs);
     } else {
       setPlayCol(-1);
     }
     return () => { if (playTimer.current) clearInterval(playTimer.current); };
-  }, [playingThis, steps, stepMs]);
+  }, [playingThis, steps, playStepMs]);
 
   const patterns = useQuery({ queryKey: ["patterns"], queryFn: fetchPatterns });
 
