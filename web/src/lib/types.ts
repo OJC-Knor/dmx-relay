@@ -64,7 +64,9 @@ export type LiveState = {
   focus: HeadState[];
   groot: HeadState[];
   atomic: AtomicState;
-  fog: number;
+  fog: number;             // live output (255 during a puff)
+  fog_level: number;       // slider setting shared by all clients
+  revs: { layout: number; patterns: number };  // bumped on save; clients refetch
 };
 
 // Cells are per-step values. RGB triples for colour rows;

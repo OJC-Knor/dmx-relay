@@ -1,12 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   Activity, AudioLines, Layers, LayoutGrid, Sparkles, Wifi, WifiOff,
 } from "lucide-react";
 
-import { fetchScenes } from "@/lib/api";
-import { useLiveState } from "@/lib/useLiveState";
+import { useLiveInvalidation, useLiveState } from "@/lib/useLiveState";
 import { cn } from "@/lib/utils";
 
 const tabs = [
@@ -18,9 +16,9 @@ const tabs = [
 
 export default function AppShell() {
   const loc = useLocation();
-  const scenes = useQuery({ queryKey: ["scenes"], queryFn: fetchScenes, refetchInterval: 1500 });
-  const { connected } = useLiveState();
-  const running = scenes.data?.running ?? null;
+  const { state, connected } = useLiveState();
+  useLiveInvalidation();
+  const running = state.running_scene;
 
   return (
     <div className="min-h-screen bg-bg">

@@ -18,6 +18,19 @@ import time
 import serial
 
 
+# start code + 512 slots, 11 bits each (start + 8 data + 2 stop) at 250 kbaud
+FRAME_WIRE_SECS = 513 * 11 / 250_000
+
+
+class PortInUseError(RuntimeError):
+    """Another process already holds the DMX port.
+
+    Two senders on one adapter interleave their frames, so fixtures see
+    both universes alternately — two scenes fighting each other, flicker,
+    and channels like the fog level bouncing between values.
+    """
+
+
 class Universe:
     """One DMX universe.
 
@@ -37,6 +50,7 @@ class Universe:
         self._ser: serial.Serial | None = None
         self._error: BaseException | None = None
         self._smooth_fixtures: list = []   # fixtures with a _smooth_step(dt) hook
+        self._wire_free_at = 0.0           # monotonic time the last frame leaves the wire
 
     # ----- lifecycle -----
 
@@ -51,8 +65,14 @@ class Universe:
                     stopbits=serial.STOPBITS_TWO,
                     timeout=0,
                     write_timeout=2,
+                    exclusive=True,   # flock: a second instance can't open it
                 )
             except serial.SerialException as e:
+                if "exclusively lock" in str(e):
+                    raise PortInUseError(
+                        f"{self.port} is already in use by another soos-lights instance. "
+                        f"Stop it first (e.g. `pgrep -fl app.py`)."
+                    ) from e
                 print(f"[dmx-tx] serial port unavailable ({e}); falling back to mock mode")
                 self.mock = True
                 self._ser = None
@@ -127,11 +147,18 @@ class Universe:
         ser = self._ser
         if ser is None:
             return
+        # flush() can return while the tail of the previous frame is still in
+        # the FTDI chip's FIFO; switching baud then would garble the highest
+        # channels (fog sits at 500). Wait until it has physically gone out.
+        wait = self._wire_free_at - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
         ser.baudrate = 90_000
         ser.write(b"\x00")  # ~111us low = DMX BREAK
         ser.flush()
         ser.baudrate = 250_000
         ser.write(b"\x00" + channels)  # start code + 512 channels
+        self._wire_free_at = time.monotonic() + FRAME_WIRE_SECS + 0.001
         ser.flush()
 
 
