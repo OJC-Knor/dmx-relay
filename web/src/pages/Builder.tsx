@@ -19,8 +19,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover
 import { ToggleGroup, ToggleItem } from "@/components/ui/ToggleGroup";
 import { Tooltip } from "@/components/ui/Tooltip";
 import {
-  deletePattern, fetchPatterns, fetchRig, fetchScenes, playScene, savePattern, stopScene,
+  deletePattern, fetchPatterns, fetchRig, playScene, savePattern, stopScene,
 } from "@/lib/api";
+import { useLiveState } from "@/lib/useLiveState";
 import type { FixtureMeta, Pattern, RgbCell } from "@/lib/types";
 import { cn, rgbToHex } from "@/lib/utils";
 
@@ -137,8 +138,7 @@ export default function Builder() {
 
   const stepMs = useMemo(() => Math.round(60_000 / (bpm * 4)), [bpm]);
 
-  const scenes = useQuery({ queryKey: ["scenes"], queryFn: fetchScenes, refetchInterval: 1500 });
-  const running = scenes.data?.running ?? null;
+  const running = useLiveState().state.running_scene;
   const playingThis = !!running && running === `pattern:${name || "__live"}`;
 
   const [playCol, setPlayCol] = useState(-1);

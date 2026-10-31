@@ -41,6 +41,8 @@ _scene_lock = threading.RLock()
 _fog_level = 0
 _fog_puff_gen = 0
 _fog_lock = threading.Lock()
+# Bumped on every layout/pattern save so all connected browsers refetch.
+_revs = {"layout": 0, "patterns": 0}
 
 
 @asynccontextmanager
@@ -367,6 +369,7 @@ def get_state():
         return {
             "running_scene": None, "tripars": [], "pinspots": [],
             "spotlight": 0, "focus": [], "groot": [], "atomic": {}, "fog": 0,
+            "fog_level": 0, "revs": _revs,
         }
     return {
         "running_scene": _current_scene,
@@ -381,6 +384,8 @@ def get_state():
                      for i, h in enumerate(_rig.groot)],
         "atomic":   _rig.atomic.state,
         "fog":      _rig.fog.state["level"],
+        "fog_level": _fog_level,   # slider setting; `fog` is the live output (255 during a puff)
+        "revs":     _revs,
     }
 
 
@@ -393,6 +398,7 @@ def get_layout():
 def save_layout(layout: dict):
     LAYOUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     LAYOUT_PATH.write_text(json.dumps(layout, indent=2, sort_keys=True))
+    _revs["layout"] += 1
     return {"ok": True}
 
 
@@ -424,6 +430,7 @@ def _load_patterns() -> dict[str, dict]:
 def _save_patterns(patterns: dict[str, dict]) -> None:
     PATTERNS_PATH.parent.mkdir(parents=True, exist_ok=True)
     PATTERNS_PATH.write_text(json.dumps(patterns, indent=2, sort_keys=True))
+    _revs["patterns"] += 1
 
 
 @app.get("/api/patterns")

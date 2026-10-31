@@ -31,7 +31,8 @@ const TEMPO_ORDER: Tempo[] = ["slow", "medium", "fast", "insane", "pattern"];
 
 export default function Controls() {
   const qc = useQueryClient();
-  const scenes = useQuery({ queryKey: ["scenes"], queryFn: fetchScenes, refetchInterval: 1500 });
+  const scenes = useQuery({ queryKey: ["scenes"], queryFn: fetchScenes });
+  const { state } = useLiveState();
 
   const sceneMut = useMutation({
     mutationFn: (key: string) => playScene(key),
@@ -43,7 +44,7 @@ export default function Controls() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["scenes"] }),
   });
 
-  const running = scenes.data?.running ?? null;
+  const running = state.running_scene;
   const items = scenes.data?.scenes ?? [];
 
   return (
@@ -164,7 +165,11 @@ function AtomicCard() {
 }
 
 function FogCard() {
-  const [fog, setFog] = useState(0);
+  // Follow the server's slider level so every client shows the same value;
+  // only while this user is dragging does the local value win.
+  const { state } = useLiveState();
+  const [dragging, setDragging] = useState<number | null>(null);
+  const fog = dragging ?? state.fog_level;
   // Memoised: a fresh throttle per render throttles nothing, and the burst
   // of parallel requests can land out of order, leaving the fog short of 255.
   const sendFog = useMemo(
@@ -179,7 +184,11 @@ function FogCard() {
       />
       <CardBody className="!pt-1">
         <Field label={<>Level <span className="ml-1 text-mutedFg/70 normal-case tracking-normal">{fog}</span></>}>
-          <Slider value={fog} onChange={(v) => { setFog(v); sendFog(v); }} />
+          <Slider
+            value={fog}
+            onChange={(v) => { setDragging(v); sendFog(v); }}
+            onCommit={(v) => { sendFog(v); setTimeout(() => setDragging(null), 250); }}
+          />
         </Field>
         <div className="mt-3 grid grid-cols-2 gap-2">
           <Button
@@ -189,7 +198,7 @@ function FogCard() {
           >
             <Cloud className="size-3.5" /> PUFF (3s)
           </Button>
-          <Button size="sm" onClick={() => { setFog(0); fogOff(); }}>
+          <Button size="sm" onClick={() => { setDragging(null); fogOff().catch((e) => toast.error(e.message)); }}>
             <CircleSlash className="size-3.5" /> Off
           </Button>
         </div>

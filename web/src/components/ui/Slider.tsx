@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 type Props = {
   value: number;
   onChange: (v: number) => void;
+  onCommit?: (v: number) => void;   // pointer released / key up
   min?: number;
   max?: number;
   step?: number;
@@ -12,7 +13,7 @@ type Props = {
 };
 
 export function Slider({
-  value, onChange, min = 0, max = 255, step = 1, className, trackClassName,
+  value, onChange, onCommit, min = 0, max = 255, step = 1, className, trackClassName,
 }: Props) {
   return (
     <RS.Root
@@ -22,6 +23,7 @@ export function Slider({
       max={max}
       step={step}
       onValueChange={(v) => onChange(v[0])}
+      onValueCommit={onCommit && ((v) => onCommit(v[0]))}
     >
       <RS.Track className={cn(
         "relative h-1.5 grow overflow-hidden rounded-full bg-surface3",
