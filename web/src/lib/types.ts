@@ -66,9 +66,13 @@ export type LiveState = {
   atomic: AtomicState;
   fog: number;             // live output (255 during a puff)
   fog_level: number;       // slider setting shared by all clients
-  revs: { layout: number; patterns: number };  // bumped on save; clients refetch
+  revs: { layout: number; patterns: number; aim: number };  // bumped on save; clients refetch
   vj: VJState | null;
 };
+
+// Calibrated pan/tilt (16-bit) per head, per named target: { ball: { "focus-1": {pan, tilt} } }
+export type AimPos = { pan: number; tilt: number };
+export type AimPoints = Record<string, Record<string, AimPos>>;
 
 export type VJEffect = "flash" | "pulse" | "chase" | "colour_bar";
 export type VJHold = "blinder" | "strobe" | "blackout" | "fog";

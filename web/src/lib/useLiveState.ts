@@ -17,7 +17,7 @@ const EMPTY: LiveState = {
   atomic: { intensity: 0, duration: 0, rate: 0, effect: 0 },
   fog: 0,
   fog_level: 0,
-  revs: { layout: 0, patterns: 0 },
+  revs: { layout: 0, patterns: 0, aim: 0 },
   vj: null,
 };
 
@@ -79,6 +79,7 @@ export function useLiveInvalidation(): void {
   const { running_scene, revs } = state;
   useEffect(() => { qc.invalidateQueries({ queryKey: ["scenes"] }); }, [qc, running_scene]);
   useEffect(() => { qc.invalidateQueries({ queryKey: ["layout"] }); }, [qc, revs.layout]);
+  useEffect(() => { qc.invalidateQueries({ queryKey: ["aim"] }); }, [qc, revs.aim]);
   useEffect(() => {
     qc.invalidateQueries({ queryKey: ["patterns"] });
     qc.invalidateQueries({ queryKey: ["scenes"] });

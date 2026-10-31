@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import aim
 from beat import BeatClock
 from dmx import Universe
 from rig import PORT, Rig, build_rig, fixture_ids
@@ -44,7 +45,7 @@ _fog_level = 0
 _fog_puff_gen = 0
 _fog_lock = threading.Lock()
 # Bumped on every layout/pattern save so all connected browsers refetch.
-_revs = {"layout": 0, "patterns": 0}
+_revs = {"layout": 0, "patterns": 0, "aim": 0}
 # Shared tempo (tap / mic) and the VJ effects layer on top of the scenes.
 _clock = BeatClock()
 set_clock(_clock)        # scenes follow the shared tempo too
@@ -457,6 +458,63 @@ def vj_scene(key: str):
         _queued_timer.daemon = True
         _queued_timer.start()
     return {"ok": True, "queued": True}
+
+
+# ----- aim points (calibrate heads onto the mirror ball etc.) -----
+
+class AimPos(BaseModel):
+    pan: Annotated[int, Field(ge=0, le=65535)]
+    tilt: Annotated[int, Field(ge=0, le=65535)]
+
+
+class AimJog(AimPos):
+    head: str
+    solo: bool = True    # close the other heads so you can see which beam you're steering
+
+
+@app.get("/api/aim")
+def get_aim():
+    assert _rig is not None
+    return {"points": aim.load(), "heads": list(aim.heads(_rig))}
+
+
+@app.post("/api/aim/jog")
+def aim_jog(j: AimJog):
+    """Live-steer one head while calibrating. Stops any scene so it can't fight."""
+    assert _rig is not None
+    heads = aim.heads(_rig)
+    if j.head not in heads:
+        raise HTTPException(404, f"unknown head {j.head!r}")
+    _cancel_queued_scene()
+    _stop_current_scene()
+    for hid, h in heads.items():
+        if hid == j.head:
+            aim.beam_for_aiming(h)
+            h.position16(j.pan, j.tilt)
+        elif j.solo:
+            h.shutter("closed")
+    return {"ok": True}
+
+
+@app.put("/api/aim/{point}/{head}")
+def aim_save(point: str, head: str, pos: AimPos):
+    assert _rig is not None
+    if head not in aim.heads(_rig):
+        raise HTTPException(404, f"unknown head {head!r}")
+    points = aim.load()
+    points.setdefault(point, {})[head] = {"pan": pos.pan, "tilt": pos.tilt}
+    aim.save(points)
+    _revs["aim"] += 1
+    return {"ok": True}
+
+
+@app.delete("/api/aim/{point}/{head}")
+def aim_clear(point: str, head: str):
+    points = aim.load()
+    points.get(point, {}).pop(head, None)
+    aim.save(points)
+    _revs["aim"] += 1
+    return {"ok": True}
 
 
 # ----- layout editor -----
