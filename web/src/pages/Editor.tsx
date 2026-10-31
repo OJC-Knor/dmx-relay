@@ -57,18 +57,18 @@ export default function Editor() {
     <Card>
       <CardHeader
         title="Rig layout"
-        subtitle="Drag fixtures to where they actually are. Geometry-aware scenes use this."
+        subtitle="Drag fixtures to where they really hang · geometry-aware scenes use this"
         action={
           <div className="flex items-center gap-2">
             <Tooltip content="Snap fixtures to a 5% grid while dragging">
-              <label className="flex cursor-pointer items-center gap-2 text-xs text-mutedFg">
+              <label className="flex cursor-pointer items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-mutedFg">
                 <Magnet className="size-3.5" /> Snap
                 <Switch checked={snap} onCheckedChange={setSnap} />
               </label>
             </Tooltip>
             <Button
               size="sm"
-              variant="ghost"
+              variant="default"
               onClick={() => { if (confirm("Reset layout to defaults?")) reset.mutate(); }}
             >
               <RotateCcw className="size-3.5" /> Reset
@@ -79,7 +79,7 @@ export default function Editor() {
           </div>
         }
       />
-      <CardBody>
+      <CardBody className="p-2">
         <Stage snap={snap}>
           {(rig.data?.fixtures ?? []).map((f) => (
             <Draggable
@@ -96,14 +96,14 @@ export default function Editor() {
           ))}
         </Stage>
 
-        <div className="mt-4 flex flex-wrap items-center gap-3">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {TYPE_COUNT_FOR_LEGEND.map((t) => {
             const n = (rig.data?.fixtures ?? []).filter((f) => f.type === t).length;
             if (!n) return null;
             return (
-              <Badge key={t} className="gap-2">
-                <span className="size-2 rounded-full" style={{ background: TYPE_COLOR[t] }} />
-                {TYPE_LABEL[t]} <span className="text-mutedFg/70">×{n}</span>
+              <Badge key={t} className="gap-1.5">
+                <span className="size-1.5 rounded-full" style={{ background: TYPE_COLOR[t] }} />
+                {TYPE_LABEL[t]} <span className="font-mono text-muted">×{n}</span>
               </Badge>
             );
           })}
@@ -116,31 +116,35 @@ export default function Editor() {
 function Stage({ children, snap }: { children: React.ReactNode; snap: boolean }) {
   return (
     <div
-      className="relative w-full overflow-hidden rounded-xl border border-line bg-bg2"
-      style={{ aspectRatio: "16 / 10", touchAction: "none" }}
+      className="relative w-full overflow-hidden rounded-key border border-line"
+      style={{
+        aspectRatio: "16 / 10", touchAction: "none", backgroundColor: "#040405",
+        backgroundImage:
+          "linear-gradient(to right, rgba(255,255,255,0.035) 1px, transparent 1px)," +
+          "linear-gradient(to bottom, rgba(255,255,255,0.035) 1px, transparent 1px)",
+        backgroundSize: "5% 8%",
+      }}
     >
-      {/* gradient zones: blue near top (crowd), red near bottom (stage) */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_50%_30%_at_50%_15%,rgba(124,146,255,0.05),transparent_70%),radial-gradient(ellipse_60%_30%_at_50%_95%,rgba(255,80,112,0.04),transparent_70%)]" />
 
       {/* CROWD zone */}
       <div
         className="pointer-events-none absolute rounded-full border border-dashed border-accent/30"
         style={{ left: "25%", top: "5%", width: "50%", height: "18%" }}
       >
-        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[9px] tracking-[0.3em] text-accent/60">CROWD</span>
+        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-[9px] tracking-[0.3em] text-accent/60">CROWD</span>
       </div>
       {/* STAGE zone */}
       <div
-        className="pointer-events-none absolute rounded-lg border border-dashed border-[#ff7878]/30"
+        className="pointer-events-none absolute rounded-[4px] border border-dashed border-[#ff7878]/30"
         style={{ left: "4%", right: "4%", bottom: "2%", height: "22%" }}
       >
-        <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 text-[9px] tracking-[0.3em] text-[#ff7878]/60">STAGE</span>
+        <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.3em] text-[#ff7878]/60">STAGE</span>
       </div>
 
       {/* optional snap grid */}
       {snap && (
         <div
-          className="pointer-events-none absolute inset-0 opacity-30"
+          className="pointer-events-none absolute inset-0 opacity-60"
           style={{
             backgroundImage:
               "linear-gradient(to right, #2a2a32 1px, transparent 1px), linear-gradient(to bottom, #2a2a32 1px, transparent 1px)",
@@ -200,7 +204,7 @@ function Draggable({
     >
       <FixtureMark type={meta.type} label={meta.label} />
       {hover && (
-        <div className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-line bg-surface px-2 py-1 text-[10px] text-mutedFg shadow-soft">
+        <div className="pointer-events-none absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-[3px] border border-line2 bg-black px-1.5 py-0.5 font-mono text-[10px] text-mutedFg">
           {meta.id} · DMX {meta.addr}
         </div>
       )}
@@ -213,7 +217,7 @@ function FixtureMark({ type, label }: { type: FixtureMeta["type"]; label: string
   const dot = (
     <div
       className="grid h-7 w-7 place-items-center rounded-full text-[9px] font-bold text-black shadow-md"
-      style={{ background: color, boxShadow: `0 0 0 2px ${color}33, 0 4px 12px ${color}66` }}
+      style={{ background: color, boxShadow: `0 0 0 1px #000, 0 0 10px ${color}55` }}
     >
       {label}
     </div>
@@ -221,8 +225,8 @@ function FixtureMark({ type, label }: { type: FixtureMeta["type"]; label: string
   if (type === "atomic") {
     // square
     return (
-      <div className="grid h-8 w-8 place-items-center rounded-md text-[9px] font-bold text-white shadow-md"
-           style={{ background: color, boxShadow: `0 0 0 2px ${color}33, 0 4px 12px ${color}66` }}>
+      <div className="grid h-8 w-8 place-items-center rounded-[3px] text-[9px] font-bold text-white shadow-md"
+           style={{ background: color, boxShadow: `0 0 0 1px #000, 0 0 10px ${color}55` }}>
         {label}
       </div>
     );
@@ -231,8 +235,8 @@ function FixtureMark({ type, label }: { type: FixtureMeta["type"]; label: string
     return (
       <div className="relative">
         <div
-          className="grid h-8 w-8 place-items-center rounded-md text-[9px] font-bold text-black shadow-md"
-          style={{ background: color, boxShadow: `0 0 0 2px ${color}33, 0 4px 12px ${color}66` }}
+          className="grid h-8 w-8 place-items-center rounded-[3px] text-[9px] font-bold text-black shadow-md"
+          style={{ background: color, boxShadow: `0 0 0 1px #000, 0 0 10px ${color}55` }}
         >
           {label}
         </div>
@@ -248,8 +252,8 @@ function FixtureMark({ type, label }: { type: FixtureMeta["type"]; label: string
     return (
       <div className="rotate-45">
         <div
-          className="grid h-7 w-7 place-items-center rounded-md text-[9px] font-bold text-black shadow-md -rotate-45"
-          style={{ background: color, boxShadow: `0 0 0 2px ${color}33, 0 4px 12px ${color}66` }}
+          className="grid h-7 w-7 place-items-center rounded-[3px] text-[9px] font-bold text-black shadow-md -rotate-45"
+          style={{ background: color, boxShadow: `0 0 0 1px #000, 0 0 10px ${color}55` }}
         >
           {label}
         </div>
@@ -260,7 +264,7 @@ function FixtureMark({ type, label }: { type: FixtureMeta["type"]; label: string
     return (
       <div
         className="grid h-9 w-12 place-items-center rounded-[40%] text-[9px] font-bold text-black shadow-md"
-        style={{ background: color, filter: "blur(0.3px)", boxShadow: `0 0 0 2px ${color}33, 0 4px 12px ${color}66` }}
+        style={{ background: color, filter: "blur(0.3px)", boxShadow: `0 0 0 1px #000, 0 0 10px ${color}55` }}
       >
         {label}
       </div>

@@ -83,11 +83,11 @@ class BeatClock:
             self.source = source
 
     def downbeat(self) -> None:
-        """Now is beat 1 of a bar."""
+        """Resync: now is beat 1 of bar 1 of a new phrase (8 bars = 32 beats)."""
         now = time.monotonic()
         with self._lock:
-            self._reanchor(now)
-            self._anchor_beat = float(math.ceil(self._anchor_beat / 4 - 0.5) * 4)
+            self._anchor = now
+            self._anchor_beat = 0.0
 
     def nudge(self, ms: float) -> None:
         """Shift the phase: positive = beats land later."""

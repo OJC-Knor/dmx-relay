@@ -7,24 +7,26 @@ export default {
     container: { center: true, padding: "1rem", screens: { "2xl": "1280px" } },
     extend: {
       colors: {
-        // surfaces & ink
+        // surfaces & ink — console style: near-black, hairline borders
         bg:        "#08080a",
-        bg2:       "#0d0d10",
-        surface:   "#141418",
-        surface2:  "#1a1a20",
-        surface3:  "#22222a",
-        line:      "#2a2a32",
-        line2:     "#36363f",
-        muted:     "#8a8a94",
-        mutedFg:   "#aeaeb6",
-        text:      "#f4f4f6",
+        bg2:       "#0b0b0e",   // wells: inputs, readouts, stage
+        surface:   "#0e0e11",   // panels
+        surface2:  "#16161a",   // keys
+        surface3:  "#1f1f24",   // tracks, unlit segments
+        line:      "#1f1f24",   // panel borders
+        line2:     "#2a2a31",   // key borders
+        muted:     "#7c7c86",
+        mutedFg:   "#9a9aa4",
+        text:      "#e6e6e9",
 
-        // semantic
-        accent:    "#7c92ff",
+        // semantic — one colour per job, as on a lighting desk
+        accent:    "#7c92ff",   // selection, beats
         accentMuted: "#5b6cd6",
-        warn:      "#ffa84d",
-        danger:    "#ff5070",
-        ok:        "#4cd384",
+        beat:      "#ffb020",   // tempo, downbeat, master below full
+        live:      "#38e08c",   // running / on air
+        warn:      "#ffb020",
+        danger:    "#ff4d6a",
+        ok:        "#38e08c",
 
         // fixture types
         tripar:  "#5b9dff",
@@ -37,6 +39,11 @@ export default {
       },
       fontFamily: {
         sans: ['"Inter"', '"InterVariable"', "-apple-system", "system-ui", "Segoe UI", "Roboto", "sans-serif"],
+        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
+      },
+      borderRadius: {
+        key: "5px",     // buttons / pads
+        panel: "6px",   // panels
       },
       fontSize: {
         // tighter letter-spacing on headings
@@ -45,7 +52,7 @@ export default {
         h3: ["16px", { lineHeight: "22px", fontWeight: "600" }],
       },
       boxShadow: {
-        soft: "0 2px 6px rgba(0,0,0,0.25), 0 8px 32px rgba(0,0,0,0.4)",
+        soft: "0 8px 24px rgba(0,0,0,0.5)",
         glow: "0 0 0 1px rgba(124,146,255,0.18), 0 8px 32px -8px rgba(124,146,255,0.35)",
       },
       keyframes: {

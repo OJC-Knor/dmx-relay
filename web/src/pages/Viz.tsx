@@ -1,8 +1,8 @@
 import { useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { Activity, Maximize2 } from "lucide-react";
+import { Maximize2 } from "lucide-react";
 
+import { C, Led } from "@/components/console";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -65,55 +65,44 @@ export default function Viz() {
   return (
     <Card>
       <CardHeader
-        title={
-          <span className="flex items-center gap-2">
-            <Activity className="size-3" />
-            Live visualisation
-          </span>
-        }
-        subtitle="Realtime preview of the rig — updates over WebSocket as scenes run"
+        title="Visualiser"
+        subtitle="Scene output, live over WebSocket (VJ effects aren't shown)"
         action={
           <div className="flex items-center gap-2">
-            <span className={cn(
-              "rounded-full px-2 py-0.5 text-[10px] font-medium",
-              connected
-                ? "bg-ok/15 text-ok border border-ok/30"
-                : "bg-danger/15 text-danger border border-danger/30",
-            )}>
-              {connected ? "● live" : "● offline"}
+            <span className={cn("flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em]",
+                                connected ? "text-live" : "text-danger")}>
+              <Led on colour={connected ? C.live : C.danger} blink={!connected} />
+              {connected ? "Live" : "Offline"}
             </span>
             <Tooltip content="Fullscreen the stage view">
-              <Button size="icon" variant="ghost" onClick={goFullscreen}>
-                <Maximize2 className="size-4" />
+              <Button size="icon" variant="default" className="!h-8 !w-8" onClick={goFullscreen}>
+                <Maximize2 className="size-3.5" />
               </Button>
             </Tooltip>
           </div>
         }
       />
-      <CardBody>
+      <CardBody className="p-2">
         <div
           ref={stageRef}
-          className="relative w-full overflow-hidden rounded-xl border border-line"
+          className="relative w-full overflow-hidden rounded-key border border-line"
           style={{
             aspectRatio: "16 / 10",
-            background:
-              "radial-gradient(ellipse 50% 30% at 50% 14%, rgba(124,146,255,0.06) 0%, transparent 70%)," +
-              "radial-gradient(ellipse 60% 30% at 50% 90%, rgba(255,80,112,0.04) 0%, transparent 70%)," +
-              "#050507",
+            backgroundColor: "#040405",
+            backgroundImage:
+              "linear-gradient(to right, rgba(255,255,255,0.035) 1px, transparent 1px)," +
+              "linear-gradient(to bottom, rgba(255,255,255,0.035) 1px, transparent 1px)",
+            backgroundSize: "5% 8%",
           }}
         >
-          <span className="absolute left-1/2 top-2 -translate-x-1/2 text-[9px] tracking-[0.3em] text-white/15">CROWD</span>
-          <span className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[9px] tracking-[0.3em] text-white/15">STAGE</span>
+          <span className="absolute left-1/2 top-2 -translate-x-1/2 font-mono text-[9px] tracking-[0.3em] text-white/20">CROWD</span>
+          <span className="absolute bottom-2 left-1/2 -translate-x-1/2 font-mono text-[9px] tracking-[0.3em] text-white/20">STAGE</span>
 
           {state.running_scene && (
-            <motion.div
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="absolute right-3 top-3 flex items-center gap-2 rounded-full border border-accent/30 bg-accent/15 px-3 py-1 text-[11px] text-accent backdrop-blur"
-            >
-              <Activity className="size-3 animate-pulse" />
+            <div className="absolute left-2 top-2 flex items-center gap-1.5 rounded-[3px] border border-line2 bg-black/80 px-2 py-1 font-mono text-[10px] text-text">
+              <Led on colour={C.live} />
               <span className="max-w-[180px] truncate">{state.running_scene.replace(/^pattern:/, "♪ ")}</span>
-            </motion.div>
+            </div>
           )}
 
           {fixtures.map((f) => {

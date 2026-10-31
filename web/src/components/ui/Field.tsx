@@ -10,9 +10,9 @@ export function Field({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-col gap-1.5", className)}>
+    <div className={cn("flex flex-col gap-1", className)}>
       {label && (
-        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
+        <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">
           {label}
         </span>
       )}
@@ -29,9 +29,9 @@ export function Input({
     <input
       {...rest}
       className={cn(
-        "h-10 rounded-lg border border-line bg-bg2 px-3 text-sm text-text",
+        "h-9 rounded-key border border-line2 bg-black px-2.5 text-sm text-text",
         "placeholder:text-muted/60 outline-none transition",
-        "focus:border-accent focus:ring-2 focus:ring-accent/20",
+        "focus:border-accent",
         className,
       )}
     />
